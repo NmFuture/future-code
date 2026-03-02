@@ -258,7 +258,7 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
           }}
         >
           <div data-slot="question-header-title">{summary()}</div>
-          <div data-slot="question-progress" class="ml-auto">
+          <div data-slot="question-progress" class="ml-auto mr-1">
             <For each={questions()}>
               {(_, i) => (
                 <button
