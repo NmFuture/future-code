@@ -1981,7 +1981,7 @@ function Task(props: ToolProps<typeof TaskTool>) {
       pending="Delegating..."
       part={props.part}
     >
-      {props.input.description}
+      Task {props.input.description}
       <Show when={isRunning() && tools().length > 0}>
         {" "}
         · {tools().length} toolcalls
