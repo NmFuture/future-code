@@ -1986,14 +1986,7 @@ function Task(props: ToolProps<typeof TaskTool>) {
         {" "}
         · {tools().length} toolcalls
         <Show fallback={"\n↳ Running..."} when={current()}>
-          {(item) => {
-            const title = createMemo(() => (item().state as any).title)
-            return (
-              <>
-                {"\n"}↳ {Locale.titlecase(item().tool)} {title()}
-              </>
-            )
-          }}
+          {"\n"}↳ {Locale.titlecase(current()!.tool)} {(current()!.state as any).title}
         </Show>
       </Show>
       <Show when={duration() && props.part.state.status === "completed"}>
