@@ -1982,12 +1982,16 @@ function Task(props: ToolProps<typeof TaskTool>) {
       part={props.part}
     >
       Task {props.input.description}
-      <Show when={isRunning() && tools().length > 0}> · {tools().length} toolcalls</Show>
-      <Show fallback={"\n└ Running..."} when={current()}>
-        {"\n└"} {Locale.titlecase(current()!.tool)} {(current()!.state as any).title}
+      <Show when={isRunning() && tools().length > 0}>
+        {" "}
+        · {tools().length} toolcalls
+        <Show fallback={"\n└ Running..."} when={current()}>
+          {"\n└"} {Locale.titlecase(current()!.tool)} {(current()!.state as any).title}
+        </Show>
       </Show>
       <Show when={duration() && props.part.state.status === "completed"}>
-        {"\n└ "} {tools().length} toolcalls · {Locale.duration(duration())}
+        {"\n└ "}
+        {tools().length} toolcalls · {Locale.duration(duration())}
       </Show>
     </InlineTool>
   )
