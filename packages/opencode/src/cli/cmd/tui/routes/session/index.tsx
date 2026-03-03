@@ -1973,6 +1973,23 @@ function Task(props: ToolProps<typeof TaskTool>) {
     return assistant - first
   })
 
+  const content = createMemo(() => {
+    if (!props.input.description) return ""
+    let content = [`Task ${props.input.description}`]
+
+    if (isRunning() && tools().length > 0) {
+      content[0] += ` · ${tools().length} toolcalls`
+      if (current()) content.push(`⤷ ${Locale.titlecase(current()!.tool)} ${(current()!.state as any).title}`)
+      else content.push(`⤷ Running...`)
+    }
+
+    if (props.part.state.status === "completed") {
+      content.push(`└ ${tools().length} toolcalls · ${Locale.duration(duration())}`)
+    }
+
+    return content.join("\n")
+  })
+
   return (
     <InlineTool
       icon="│"
@@ -1981,18 +1998,7 @@ function Task(props: ToolProps<typeof TaskTool>) {
       pending="Delegating..."
       part={props.part}
     >
-      Task {props.input.description}
-      <Show when={isRunning() && tools().length > 0}>
-        {" "}
-        · {tools().length} toolcalls
-        <Show fallback={"\n└ Running..."} when={current()}>
-          {"\n└"} {Locale.titlecase(current()!.tool)} {(current()!.state as any).title}
-        </Show>
-      </Show>
-      <Show when={duration() && props.part.state.status === "completed"}>
-        {"\n└ "}
-        {tools().length} toolcalls · {Locale.duration(duration())}
-      </Show>
+      {content()}
     </InlineTool>
   )
 }
