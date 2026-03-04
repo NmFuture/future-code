@@ -45,14 +45,14 @@ function createEventSource(client: RpcClient): EventSource {
   }
 }
 
-async function workerURL() {
+async function target() {
   if (typeof OPENCODE_WORKER_PATH !== "undefined") return OPENCODE_WORKER_PATH
   const dist = new URL("./cli/cmd/tui/worker.js", import.meta.url)
   if (await Filesystem.exists(fileURLToPath(dist))) return dist
   return new URL("./worker.ts", import.meta.url)
 }
 
-async function promptText(value?: string) {
+async function input(value?: string) {
   const piped = process.stdin.isTTY ? undefined : await Bun.stdin.text()
   if (!value) return piped
   if (!piped) return value
@@ -111,9 +111,9 @@ export const TuiThreadCommand = cmd({
       }
 
       // Resolve relative paths against PWD to preserve behavior when using --cwd flag
-      const baseCwd = process.env.PWD ?? process.cwd()
-      const cwd = args.project ? path.resolve(baseCwd, args.project) : process.cwd()
-      const workerPath = await workerURL()
+      const root = process.env.PWD ?? process.cwd()
+      const cwd = args.project ? path.resolve(root, args.project) : process.cwd()
+      const file = await target()
       try {
         process.chdir(cwd)
       } catch {
@@ -121,7 +121,7 @@ export const TuiThreadCommand = cmd({
         return
       }
 
-      const worker = new Worker(workerPath, {
+      const worker = new Worker(file, {
         env: Object.fromEntries(
           Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
         ),
@@ -131,27 +131,27 @@ export const TuiThreadCommand = cmd({
       }
 
       const client = Rpc.client<typeof rpc>(worker)
-      const onError = (e: unknown) => {
+      const error = (e: unknown) => {
         Log.Default.error(e)
       }
-      const onReload = () => {
-        client.call("reload", undefined).catch((error) => {
+      const reload = () => {
+        client.call("reload", undefined).catch((err) => {
           Log.Default.warn("worker reload failed", {
-            error: error instanceof Error ? error.message : String(error),
+            error: err instanceof Error ? err.message : String(err),
           })
         })
       }
-      process.on("uncaughtException", onError)
-      process.on("unhandledRejection", onError)
-      process.on("SIGUSR2", onReload)
+      process.on("uncaughtException", error)
+      process.on("unhandledRejection", error)
+      process.on("SIGUSR2", reload)
 
       let stopped = false
       const stop = async () => {
         if (stopped) return
         stopped = true
-        process.off("uncaughtException", onError)
-        process.off("unhandledRejection", onError)
-        process.off("SIGUSR2", onReload)
+        process.off("uncaughtException", error)
+        process.off("unhandledRejection", error)
+        process.off("SIGUSR2", reload)
         await withTimeout(client.call("shutdown", undefined), 6000).catch((error) => {
           Log.Default.warn("worker shutdown failed", {
             error: error instanceof Error ? error.message : String(error),
@@ -160,7 +160,7 @@ export const TuiThreadCommand = cmd({
         worker.terminate()
       }
 
-      const prompt = await promptText(args.prompt)
+      const prompt = await input(args.prompt)
       const config = await Instance.provide({
         directory: cwd,
         fn: () => TuiConfig.get(),

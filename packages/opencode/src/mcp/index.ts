@@ -27,7 +27,7 @@ import open from "open"
 export namespace MCP {
   const log = Log.create({ service: "mcp" })
   const DEFAULT_TIMEOUT = 30_000
-  const CLOSE_TIMEOUT = 5_000
+  const CLOSE = 5_000
 
   export const Resource = z
     .object({
@@ -183,7 +183,7 @@ export namespace MCP {
     return pids
   }
 
-  function transportPID(client: MCPClient) {
+  function proc(client: MCPClient) {
     const pid = (client.transport as { pid?: number } | undefined)?.pid
     if (typeof pid === "number") return pid
     return undefined
@@ -198,20 +198,20 @@ export namespace MCP {
     }
   }
 
-  async function signalDescendants(pid: number, kind: NodeJS.Signals) {
+  async function tree(pid: number, kind: NodeJS.Signals) {
     const pids = await descendants(pid)
     pids.forEach((child) => {
       signal(child, kind)
     })
   }
 
-  async function closeClient(client: MCPClient, key: string, inputPID?: number) {
-    const pid = inputPID ?? transportPID(client)
+  async function close(client: MCPClient, key: string, raw?: number) {
+    const pid = raw ?? proc(client)
     if (pid !== undefined) {
-      await signalDescendants(pid, "SIGTERM")
+      await tree(pid, "SIGTERM")
     }
 
-    const closed = await withTimeout(client.close(), CLOSE_TIMEOUT)
+    const closed = await withTimeout(client.close(), CLOSE)
       .then(() => true)
       .catch((error) => {
         log.error("Failed to close MCP client", { key, error })
@@ -221,12 +221,12 @@ export namespace MCP {
     if (closed || pid === undefined) return
 
     signal(pid, "SIGTERM")
-    await signalDescendants(pid, "SIGTERM")
+    await tree(pid, "SIGTERM")
     if (process.platform === "win32") return
 
     await Bun.sleep(200)
     signal(pid, "SIGKILL")
-    await signalDescendants(pid, "SIGKILL")
+    await tree(pid, "SIGKILL")
   }
 
   const state = Instance.state(
@@ -265,7 +265,7 @@ export namespace MCP {
       }
     },
     async (state) => {
-      await Promise.all(Object.entries(state.clients).map(([key, client]) => closeClient(client, key)))
+      await Promise.all(Object.entries(state.clients).map(([key, client]) => close(client, key)))
       pendingOAuthTransports.clear()
     },
   )
@@ -335,9 +335,9 @@ export namespace MCP {
       }
     }
     // Close existing client if present to prevent memory leaks
-    const existingClient = s.clients[name]
-    if (existingClient) {
-      await closeClient(existingClient, name)
+    const prev = s.clients[name]
+    if (prev) {
+      await close(prev, name)
     }
     s.clients[name] = result.mcpClient
     s.status[name] = result.status
@@ -402,14 +402,14 @@ export namespace MCP {
       ]
 
       let lastError: Error | undefined
-      const connectTimeout = mcp.timeout ?? DEFAULT_TIMEOUT
+      const timeout = mcp.timeout ?? DEFAULT_TIMEOUT
       for (const { name, transport } of transports) {
         try {
           const client = new Client({
             name: "opencode",
             version: Installation.VERSION,
           })
-          await withTimeout(client.connect(transport), connectTimeout)
+          await withTimeout(client.connect(transport), timeout)
           registerNotificationHandlers(client, key)
           mcpClient = client
           log.info("connected", { key, transport: name })
@@ -482,20 +482,20 @@ export namespace MCP {
         log.info(`mcp stderr: ${chunk.toString()}`, { key })
       })
 
-      const connectTimeout = mcp.timeout ?? DEFAULT_TIMEOUT
+      const timeout = mcp.timeout ?? DEFAULT_TIMEOUT
       const client = new Client({
         name: "opencode",
         version: Installation.VERSION,
       })
       try {
-        await withTimeout(client.connect(transport), connectTimeout)
+        await withTimeout(client.connect(transport), timeout)
         registerNotificationHandlers(client, key)
         mcpClient = client
         status = {
           status: "connected",
         }
       } catch (error) {
-        await closeClient(client, key, (transport as { pid?: number } | undefined)?.pid)
+        await close(client, key, (transport as { pid?: number } | undefined)?.pid)
         log.error("local mcp startup failed", {
           key,
           command: mcp.command,
@@ -528,7 +528,7 @@ export namespace MCP {
       return undefined
     })
     if (!result) {
-      await closeClient(mcpClient, key)
+      await close(mcpClient, key)
       status = {
         status: "failed",
         error: "Failed to get tools",
@@ -597,9 +597,9 @@ export namespace MCP {
     s.status[name] = result.status
     if (result.mcpClient) {
       // Close existing client if present to prevent memory leaks
-      const existingClient = s.clients[name]
-      if (existingClient) {
-        await closeClient(existingClient, name)
+      const prev = s.clients[name]
+      if (prev) {
+        await close(prev, name)
       }
       s.clients[name] = result.mcpClient
     }
@@ -609,7 +609,7 @@ export namespace MCP {
     const s = await state()
     const client = s.clients[name]
     if (client) {
-      await closeClient(client, name)
+      await close(client, name)
       delete s.clients[name]
     }
     s.status[name] = { status: "disabled" }
