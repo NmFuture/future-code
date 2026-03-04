@@ -146,15 +146,19 @@ export function Session() {
   const activeSubagents = createMemo(() =>
     childSessions().flatMap((item) => {
       const status = sync.data.session_status?.[item.id]
-      if (status?.type === "busy" || status?.type === "retry") {
-        return [
-          {
-            session: item,
-            status,
-          },
-        ]
-      }
-      return []
+      if (status?.type !== "busy" && status?.type !== "retry") return []
+      const count = (sync.data.message[item.id] ?? [])
+        .flatMap((message) => sync.data.part[message.id] ?? [])
+        .filter(
+          (part) => part.type === "tool" && (part.state.status === "completed" || part.state.status === "error"),
+        ).length
+      return [
+        {
+          session: item,
+          status,
+          count,
+        },
+      ]
     }),
   )
 
@@ -1143,7 +1147,7 @@ export function Session() {
                     <span style={{ fg: theme.textMuted }}>Subagents</span> {activeSubagents().length} running
                     <span style={{ fg: theme.textMuted }}> · {keybind.print("session_child_cycle")} open</span>
                   </text>
-                  <For each={activeSubagents().slice(0, 3)}>
+                  <For each={activeSubagents()}>
                     {(item) => (
                       <text
                         fg={theme.textMuted}
@@ -1154,7 +1158,7 @@ export function Session() {
                           })
                         }}
                       >
-                        ↳ {Locale.truncate(item.session.title, 42)}
+                        ↳ {Locale.truncate(item.session.title, 36)} · {item.count} toolcalls
                       </text>
                     )}
                   </For>
@@ -1961,10 +1965,29 @@ function Task(props: ToolProps<typeof TaskTool>) {
     }
   })
   const childRunning = createMemo(() => status()?.type === "busy" || status()?.type === "retry")
+  const latest = createMemo(() => {
+    const user = msgs().findLast((msg) => msg.role === "user")
+    const assistant = msgs().findLast((msg) => msg.role === "assistant")
+    return {
+      user,
+      assistant,
+    }
+  })
+  const terminal = createMemo(() => {
+    const assistant = latest().assistant
+    if (!assistant) return false
+    const user = latest().user
+    if (user && user.id > assistant.id) return false
+    if (assistant.error) return true
+    return !!assistant.finish && !["tool-calls", "unknown"].includes(assistant.finish)
+  })
   const backgroundRunning = createMemo(() => background() && childRunning())
-  const failed = createMemo(() => {
-    if (!background() || childRunning()) return false
-    return !!msgs().findLast((msg) => msg.role === "assistant")?.error
+  const failed = createMemo(() => !!background() && terminal() && !!latest().assistant?.error)
+  const statusLabel = createMemo(() => {
+    if (backgroundRunning()) return "running in background"
+    if (!terminal()) return "background task pending sync"
+    if (failed()) return "background task failed"
+    return "background task finished"
   })
   const isRunning = createMemo(() => props.part.state.status === "running" || childRunning())
   const toolLabel = createMemo(() => `${childRunning() ? counts().done : counts().all} toolcalls`)
@@ -1988,12 +2011,7 @@ function Task(props: ToolProps<typeof TaskTool>) {
             </text>
             <Show when={background()}>
               <text style={{ fg: failed() ? theme.error : backgroundRunning() ? theme.warning : theme.textMuted }}>
-                ↳{" "}
-                {backgroundRunning()
-                  ? "running in background"
-                  : failed()
-                    ? "background task failed"
-                    : "background task finished"}
+                ↳ {statusLabel()}
               </text>
             </Show>
             <Show when={current()}>
