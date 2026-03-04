@@ -184,7 +184,7 @@ export namespace MCP {
   }
 
   function transportPID(client: MCPClient) {
-    const pid = (client.transport as any)?.pid
+    const pid = (client.transport as { pid?: number } | undefined)?.pid
     if (typeof pid === "number") return pid
     return undefined
   }
@@ -495,7 +495,7 @@ export namespace MCP {
           status: "connected",
         }
       } catch (error) {
-        await closeClient(client, key, (transport as any)?.pid)
+        await closeClient(client, key, (transport as { pid?: number } | undefined)?.pid)
         log.error("local mcp startup failed", {
           key,
           command: mcp.command,
