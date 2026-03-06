@@ -162,7 +162,7 @@ export namespace Installation {
   }
 
   export async function upgrade(method: Method, target: string) {
-    let result
+    let result: Awaited<ReturnType<typeof upgradeCurl>> | undefined
     switch (method) {
       case "curl":
         result = await upgradeCurl(target)
@@ -183,15 +183,24 @@ export namespace Installation {
           ...process.env,
         }
         if (formula.includes("/")) {
-          await Process.run(["brew", "tap", "anomalyco/tap"], { env, nothrow: true })
+          const tap = await Process.run(["brew", "tap", "anomalyco/tap"], { env, nothrow: true })
+          if (tap.code !== 0) {
+            result = tap
+            break
+          }
           const repo = (await Process.text(["brew", "--repo", "anomalyco/tap"], { env, nothrow: true })).text.trim()
-          if (repo) await Process.run(["git", "pull", "--ff-only"], { cwd: repo, env, nothrow: true })
-          result = await Process.run(["brew", "upgrade", formula], { env, nothrow: true })
-          break
+          if (repo) {
+            const pull = await Process.run(["git", "pull", "--ff-only"], { cwd: repo, env, nothrow: true })
+            if (pull.code !== 0) {
+              result = pull
+              break
+            }
+          }
         }
         result = await Process.run(["brew", "upgrade", formula], { env, nothrow: true })
         break
       }
+
       case "choco":
         result = await Process.run(["choco", "upgrade", "opencode", `--version=${target}`, "-y"], { nothrow: true })
         break

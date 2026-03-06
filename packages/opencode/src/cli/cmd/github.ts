@@ -497,18 +497,14 @@ export const GithubRunCommand = cmd({
       const gitText = async (args: string[]) => {
         const result = await git(args, { cwd: Instance.worktree })
         if (result.exitCode !== 0) {
-          throw new Error(
-            result.stderr.toString().trim() || result.stdout.toString().trim() || `git ${args.join(" ")} failed`,
-          )
+          throw new Process.RunFailedError(["git", ...args], result.exitCode, result.stdout, result.stderr)
         }
         return result.text().trim()
       }
       const gitRun = async (args: string[]) => {
         const result = await git(args, { cwd: Instance.worktree })
         if (result.exitCode !== 0) {
-          throw new Error(
-            result.stderr.toString().trim() || result.stdout.toString().trim() || `git ${args.join(" ")} failed`,
-          )
+          throw new Process.RunFailedError(["git", ...args], result.exitCode, result.stdout, result.stderr)
         }
         return result
       }
