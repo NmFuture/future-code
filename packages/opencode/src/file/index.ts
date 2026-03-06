@@ -550,11 +550,7 @@ export namespace File {
           .text()
       }
       if (diff.trim()) {
-        const original = await $`git -c core.fsmonitor=false show HEAD:${file}`
-          .cwd(Instance.directory)
-          .quiet()
-          .nothrow()
-          .text()
+        const original = await $`git show HEAD:${file}`.cwd(Instance.directory).quiet().nothrow().text()
         const patch = structuredPatch(file, file, original, content, "old", "new", {
           context: Infinity,
           ignoreWhitespace: true,

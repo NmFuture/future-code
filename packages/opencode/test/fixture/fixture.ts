@@ -53,8 +53,8 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
       }),
     )
   }
-  const extra = await options?.init?.(dirpath)
   const realpath = sanitizePath(await fs.realpath(dirpath))
+  const extra = await options?.init?.(realpath)
   const result = {
     [Symbol.asyncDispose]: async () => {
       try {
