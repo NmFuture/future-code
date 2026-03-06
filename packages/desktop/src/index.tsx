@@ -482,6 +482,7 @@ function ServerGate(props: { children: (data: ServerReadyData) => JSX.Element })
   return (
     <Show
       when={serverData.state !== "pending" && serverData()}
+      keyed
       fallback={
         <div class="h-screen w-screen flex flex-col items-center justify-center bg-background-base">
           <Splash class="w-16 h-20 opacity-50 animate-pulse" />
@@ -489,7 +490,7 @@ function ServerGate(props: { children: (data: ServerReadyData) => JSX.Element })
         </div>
       }
     >
-      {(data) => props.children(data())}
+      {(data) => props.children(data)}
     </Show>
   )
 }
