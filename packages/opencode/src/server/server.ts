@@ -35,7 +35,8 @@ import { lazy } from "../util/lazy"
 import { InstanceBootstrap } from "../project/bootstrap"
 import { NotFoundError } from "../storage/db"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
-import { websocket } from "hono/bun"
+import { createAdaptorServer } from "@hono/node-server"
+import { createNodeWebSocket } from "@hono/node-ws"
 import { HTTPException } from "hono/http-exception"
 import { errors } from "./error"
 import { Filesystem } from "@/util/filesystem"
@@ -58,6 +59,8 @@ export namespace Server {
   }
 
   const app = new Hono()
+  const ws = createNodeWebSocket({ app })
+  export const upgradeWebSocket = ws.upgradeWebSocket
   export const App: () => Hono = lazy(
     () =>
       // TODO: Break server.ts into smaller route files to fix type inference
@@ -246,7 +249,7 @@ export namespace Server {
           ),
         )
         .route("/project", ProjectRoutes())
-        .route("/pty", PtyRoutes())
+        // .route("/pty", PtyRoutes())
         .route("/config", ConfigRoutes())
         .route("/experimental", ExperimentalRoutes())
         .route("/session", SessionRoutes())
@@ -594,7 +597,7 @@ export namespace Server {
     return result
   }
 
-  export function listen(opts: {
+  export async function listen(opts: {
     port: number
     hostname: string
     mdns?: boolean
@@ -603,42 +606,83 @@ export namespace Server {
   }) {
     _corsWhitelist = opts.cors ?? []
 
-    const args = {
-      hostname: opts.hostname,
-      idleTimeout: 0,
-      fetch: App().fetch,
-      websocket: websocket,
-    } as const
-    const tryServe = (port: number) => {
-      try {
-        return Bun.serve({ ...args, port })
-      } catch {
-        return undefined
-      }
+    const start = async (port: number) => {
+      const server = createAdaptorServer(App())
+      ws.injectWebSocket(server)
+      await new Promise<void>((resolve, reject) => {
+        const fail = (err: Error) => {
+          cleanup()
+          reject(err)
+        }
+        const ready = () => {
+          cleanup()
+          resolve()
+        }
+        const cleanup = () => {
+          server.off("error", fail)
+          server.off("listening", ready)
+        }
+        server.once("error", fail)
+        server.once("listening", ready)
+        server.listen(port, opts.hostname)
+      })
+      return server
     }
-    const server = opts.port === 0 ? (tryServe(4096) ?? tryServe(0)) : tryServe(opts.port)
-    if (!server) throw new Error(`Failed to start server on port ${opts.port}`)
 
-    _url = server.url
+    const server = await (async () => {
+      if (opts.port !== 0) return start(opts.port)
+      try {
+        return await start(4096)
+      } catch {
+        return start(0)
+      }
+    })()
+
+    const addr = server.address()
+    if (!addr || typeof addr === "string") {
+      throw new Error(`Failed to resolve server address for port ${opts.port}`)
+    }
+
+    const url = new URL("http://localhost")
+    url.hostname = opts.hostname
+    url.port = String(addr.port)
+    _url = url
 
     const shouldPublishMDNS =
       opts.mdns &&
-      server.port &&
+      addr.port &&
       opts.hostname !== "127.0.0.1" &&
       opts.hostname !== "localhost" &&
       opts.hostname !== "::1"
     if (shouldPublishMDNS) {
-      MDNS.publish(server.port!, opts.mdnsDomain)
+      MDNS.publish(addr.port, opts.mdnsDomain)
     } else if (opts.mdns) {
       log.warn("mDNS enabled but hostname is loopback; skipping mDNS publish")
     }
 
-    const originalStop = server.stop.bind(server)
-    server.stop = async (closeActiveConnections?: boolean) => {
-      if (shouldPublishMDNS) MDNS.unpublish()
-      return originalStop(closeActiveConnections)
+    let closing: Promise<void> | undefined
+    return {
+      hostname: opts.hostname,
+      port: addr.port,
+      url,
+      stop(close?: boolean) {
+        closing ??= new Promise<void>((resolve, reject) => {
+          if (shouldPublishMDNS) MDNS.unpublish()
+          server.close((err?: Error) => {
+            if (err) {
+              reject(err)
+              return
+            }
+            resolve()
+          })
+          if (close) {
+            const node = server as { closeAllConnections?: () => void; closeIdleConnections?: () => void }
+            node.closeAllConnections?.()
+            node.closeIdleConnections?.()
+          }
+        })
+        return closing
+      },
     }
-
-    return server
   }
 }

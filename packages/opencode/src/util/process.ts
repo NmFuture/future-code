@@ -13,6 +13,7 @@ export namespace Process {
     abort?: AbortSignal
     kill?: NodeJS.Signals | number
     timeout?: number
+    shell?: string | boolean
   }
 
   export interface RunOptions extends Omit<Options, "stdout" | "stderr"> {
@@ -59,6 +60,7 @@ export namespace Process {
     const proc = launch(cmd[0], cmd.slice(1), {
       cwd: opts.cwd,
       env: opts.env === null ? {} : opts.env ? { ...process.env, ...opts.env } : undefined,
+      shell: opts.shell,
       stdio: [opts.stdin ?? "ignore", opts.stdout ?? "ignore", opts.stderr ?? "ignore"],
     })
 
@@ -108,6 +110,7 @@ export namespace Process {
     const proc = spawn(cmd, {
       cwd: opts.cwd,
       env: opts.env,
+      shell: opts.shell,
       stdin: opts.stdin,
       abort: opts.abort,
       kill: opts.kill,

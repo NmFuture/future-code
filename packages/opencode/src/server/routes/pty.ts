@@ -1,11 +1,11 @@
 import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
-import { upgradeWebSocket } from "hono/bun"
 import z from "zod"
 import { Pty } from "@/pty"
 import { NotFoundError } from "../../storage/db"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
+import { Server } from "../server"
 
 export const PtyRoutes = lazy(() =>
   new Hono()
@@ -149,7 +149,7 @@ export const PtyRoutes = lazy(() =>
         },
       }),
       validator("param", z.object({ ptyID: z.string() })),
-      upgradeWebSocket((c) => {
+      Server.upgradeWebSocket((c) => {
         const id = c.req.param("ptyID")
         const cursor = (() => {
           const value = c.req.query("cursor")

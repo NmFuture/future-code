@@ -8,12 +8,8 @@ import { Snapshot } from "@/snapshot"
 import { fn } from "@/util/fn"
 import { Database, eq, desc, inArray } from "@/storage/db"
 import { MessageTable, PartTable } from "./session.sql"
-import { ProviderTransform } from "@/provider/transform"
-import { STATUS_CODES } from "http"
-import { Storage } from "@/storage/storage"
 import { ProviderError } from "@/provider/error"
 import { iife } from "@/util/iife"
-import { type SystemError } from "bun"
 import type { Provider } from "@/provider/provider"
 
 export namespace MessageV2 {
@@ -843,15 +839,15 @@ export namespace MessageV2 {
           },
           { cause: e },
         ).toObject()
-      case (e as SystemError)?.code === "ECONNRESET":
+      case (e as any)?.code === "ECONNRESET":
         return new MessageV2.APIError(
           {
             message: "Connection reset by server",
             isRetryable: true,
             metadata: {
-              code: (e as SystemError).code ?? "",
-              syscall: (e as SystemError).syscall ?? "",
-              message: (e as SystemError).message ?? "",
+              code: (e as any).code ?? "",
+              syscall: (e as any).syscall ?? "",
+              message: (e as any).message ?? "",
             },
           },
           { cause: e },
