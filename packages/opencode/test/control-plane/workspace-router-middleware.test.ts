@@ -98,12 +98,14 @@ async function setup(state: State) {
     id2,
     app,
     async request(input: RequestInfo | URL, init?: RequestInit) {
+      const headers = new Headers(init?.headers)
+      headers.set("x-opencode-workspace", state.workspace === "first" ? id1 : id2)
       return Instance.provide({
         directory: tmp.path,
         fn: async () =>
           WorkspaceContext.provide({
             workspaceID: state.workspace === "first" ? id1 : id2,
-            fn: () => app.request(input, init),
+            fn: () => app.request(input, { ...init, headers }),
           }),
       })
     },
@@ -120,7 +122,7 @@ describe("control-plane/session-proxy-middleware", () => {
     const ctx = await setup(state)
 
     ctx.app.post("/session/foo", (c) => c.text("local", 200))
-    const response = await ctx.request("http://workspace.test/session/foo?x=1", {
+    const response = await ctx.request("http://workspace.test/session", {
       method: "POST",
       body: JSON.stringify({ hello: "world" }),
       headers: {
@@ -133,7 +135,7 @@ describe("control-plane/session-proxy-middleware", () => {
     expect(state.calls).toEqual([
       {
         method: "POST",
-        url: "/session/foo?x=1",
+        url: "/session",
         body: '{"hello":"world"}',
       },
     ])
