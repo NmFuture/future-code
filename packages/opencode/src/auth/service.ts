@@ -1,5 +1,5 @@
 import path from "path"
-import { Effect, Layer, Option, Schema, ServiceMap } from "effect"
+import { Effect, Layer, Record, Result, Schema, ServiceMap } from "effect"
 import { Global } from "../global"
 import { Filesystem } from "../util/filesystem"
 
@@ -39,9 +39,36 @@ const fail = (message: string) => (cause: unknown) => new AuthServiceError({ mes
 
 export namespace AuthService {
   export interface Service {
+    /**
+     * Loads the auth entry stored under the given key.
+     *
+     * Keys are usually provider IDs, but some callers store URL-shaped keys.
+     */
     readonly get: (providerID: string) => Effect.Effect<Info | undefined, AuthServiceError>
+
+    /**
+     * Loads all persisted auth entries.
+     *
+     * Invalid entries are ignored instead of failing the whole file so older or
+     * partially-corrupt auth records do not break unrelated providers.
+     */
     readonly all: () => Effect.Effect<Record<string, Info>, AuthServiceError>
+
+    /**
+     * Stores an auth entry under a normalized key.
+     *
+     * URL-shaped keys are normalized by trimming trailing slashes. Before
+     * writing, we delete both the original key and the normalized-with-slash
+     * variant so historical duplicates collapse to one canonical entry.
+     */
     readonly set: (key: string, info: Info) => Effect.Effect<void, AuthServiceError>
+
+    /**
+     * Removes the auth entry stored under the provided key.
+     *
+     * The raw key and its normalized form are both deleted so callers can pass
+     * either version during cleanup.
+     */
     readonly remove: (key: string) => Effect.Effect<void, AuthServiceError>
   }
 }
@@ -56,15 +83,7 @@ export class AuthService extends ServiceMap.Service<AuthService, AuthService.Ser
         Effect.tryPromise({
           try: async () => {
             const data = await Filesystem.readJson<Record<string, unknown>>(file).catch(() => ({}))
-            return Object.entries(data).reduce(
-              (acc, [key, value]) => {
-                const parsed = decode(value)
-                if (Option.isNone(parsed)) return acc
-                acc[key] = parsed.value
-                return acc
-              },
-              {} as Record<string, Info>,
-            )
+            return Record.filterMap(data, (value) => Result.fromOption(decode(value), () => undefined))
           },
           catch: fail("Failed to read auth data"),
         }),
