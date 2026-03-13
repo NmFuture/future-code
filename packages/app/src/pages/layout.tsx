@@ -128,6 +128,7 @@ export default function Layout(props: ParentProps) {
 
   const [state, setState] = createStore({
     autoselect: !initialDirectory,
+    routing: false,
     busyWorkspaces: {} as Record<string, boolean>,
     hoverSession: undefined as string | undefined,
     hoverProject: undefined as string | undefined,
@@ -140,6 +141,7 @@ export default function Layout(props: ParentProps) {
   })
 
   const editor = createInlineEditorController()
+  let token = 0
   const setBusy = (directory: string, value: boolean) => {
     const key = workspaceKey(directory)
     if (value) {
@@ -261,6 +263,7 @@ export default function Layout(props: ParentProps) {
 
   const autoselecting = createMemo(() => {
     if (params.dir) return false
+    if (state.routing) return true
     if (!state.autoselect) return false
     if (!pageReady()) return true
     if (!layoutReady()) return true
@@ -270,12 +273,16 @@ export default function Layout(props: ParentProps) {
   })
 
   createEffect(() => {
-    if (!state.autoselect) return
+    if (!state.autoselect && !state.routing) return
     const dir = params.dir
     if (!dir) return
     const directory = decode64(dir)
     if (!directory) return
-    setState("autoselect", false)
+    token += 1
+    batch(() => {
+      setState("autoselect", false)
+      setState("routing", false)
+    })
   })
 
   const editorOpen = editor.editorOpen
@@ -561,23 +568,32 @@ export default function Layout(props: ParentProps) {
         if (!value.ready) return
         if (!value.layoutReady) return
         if (!state.autoselect) return
+        if (state.routing) return
         if (value.dir) return
 
         const last = server.projects.last()
-
-        if (value.list.length === 0) {
-          if (!last) return
-          setState("autoselect", false)
-          openProject(last, false)
-          navigateToProject(last)
-          return
-        }
-
-        const next = value.list.find((project) => project.worktree === last) ?? value.list[0]
+        const next =
+          value.list.length === 0
+            ? last
+            : (value.list.find((project) => project.worktree === last)?.worktree ?? value.list[0]?.worktree)
         if (!next) return
-        setState("autoselect", false)
-        openProject(next.worktree, false)
-        navigateToProject(next.worktree)
+
+        const id = ++token
+        batch(() => {
+          setState("autoselect", false)
+          setState("routing", true)
+        })
+        void navigateToProject(next, () => id === token && !params.dir).then(
+          (navigated) => {
+            if (id !== token) return
+            if (navigated) return
+            setState("routing", false)
+          },
+          () => {
+            if (id !== token) return
+            setState("routing", false)
+          },
+        )
       },
     ),
   )
@@ -1211,14 +1227,19 @@ export default function Layout(props: ParentProps) {
     return root
   }
 
-  async function navigateToProject(directory: string | undefined) {
-    if (!directory) return
+  async function navigateToProject(directory: string | undefined, live = () => true) {
+    if (!directory || !live()) return false
     const root = projectRoot(directory)
-    server.projects.touch(root)
+    const touch = () => {
+      if (!live()) return false
+      layout.projects.open(root)
+      server.projects.touch(root)
+      return true
+    }
     const project = layout.projects.list().find((item) => item.worktree === root)
-    let dirs = project
-      ? effectiveWorkspaceOrder(root, [root, ...(project.sandboxes ?? [])], store.workspaceOrder[root])
-      : [root]
+    const sandboxes =
+      project?.sandboxes ?? globalSync.data.project.find((item) => item.worktree === root)?.sandboxes ?? []
+    let dirs = effectiveWorkspaceOrder(root, [root, ...sandboxes], store.workspaceOrder[root])
     const canOpen = (value: string | undefined) => {
       if (!value) return false
       return dirs.some((item) => workspaceKey(item) === workspaceKey(value))
@@ -1229,13 +1250,16 @@ export default function Layout(props: ParentProps) {
         .list({ directory: root })
         .then((x) => x.data ?? [])
         .catch(() => [] as string[])
+      if (!live()) return false
       dirs = effectiveWorkspaceOrder(root, [root, ...listed], store.workspaceOrder[root])
       return canOpen(target)
     }
     const openSession = async (target: { directory: string; id: string }) => {
+      if (!live()) return false
       if (!canOpen(target.directory)) return false
       const [data] = globalSync.child(target.directory, { bootstrap: false })
       if (data.session.some((item) => item.id === target.id)) {
+        if (!touch()) return false
         setStore("lastProjectSession", root, { directory: target.directory, id: target.id, at: Date.now() })
         navigateWithSidebarReset(`/${base64Encode(target.directory)}/session/${target.id}`)
         return true
@@ -1244,8 +1268,10 @@ export default function Layout(props: ParentProps) {
         .get({ sessionID: target.id })
         .then((x) => x.data)
         .catch(() => undefined)
+      if (!live()) return false
       if (!resolved?.directory) return false
       if (!canOpen(resolved.directory)) return false
+      if (!touch()) return false
       setStore("lastProjectSession", root, { directory: resolved.directory, id: resolved.id, at: Date.now() })
       navigateWithSidebarReset(`/${base64Encode(resolved.directory)}/session/${resolved.id}`)
       return true
@@ -1254,19 +1280,23 @@ export default function Layout(props: ParentProps) {
     const projectSession = store.lastProjectSession[root]
     if (projectSession?.id) {
       await refreshDirs(projectSession.directory)
+      if (!live()) return false
       const opened = await openSession(projectSession)
-      if (opened) return
+      if (opened) return true
+      if (!live()) return false
       clearLastProjectSession(root)
     }
 
+    if (!live()) return false
     const latest = latestRootSession(
       dirs.map((item) => globalSync.child(item, { bootstrap: false })[0]),
       Date.now(),
     )
     if (latest && (await openSession(latest))) {
-      return
+      return true
     }
 
+    if (!live()) return false
     const fetched = latestRootSession(
       await Promise.all(
         dirs.map(async (item) => ({
@@ -1279,11 +1309,14 @@ export default function Layout(props: ParentProps) {
       ),
       Date.now(),
     )
+    if (!live()) return false
     if (fetched && (await openSession(fetched))) {
-      return
+      return true
     }
 
+    if (!touch()) return false
     navigateWithSidebarReset(`/${base64Encode(root)}/session`)
+    return true
   }
 
   function navigateToSession(session: Session | undefined) {
