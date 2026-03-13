@@ -209,19 +209,19 @@ export function StatusModal(props: { directory: string }) {
             data-slot="tablist"
             class="bg-transparent border-b border-border-weak-base px-4 pt-2 pb-0 gap-4 h-10"
           >
-            <Tabs.Trigger value="servers" data-slot="tab" class="text-12-regular">
+            <Tabs.Trigger value="servers" data-slot="tab" class="text-12-regular" classes={{ button: "!px-0" }}>
               {sortedServers().length > 0 ? `${sortedServers().length} ` : ""}
               {language.t("status.popover.tab.servers")}
             </Tabs.Trigger>
-            <Tabs.Trigger value="mcp" data-slot="tab" class="text-12-regular">
+            <Tabs.Trigger value="mcp" data-slot="tab" class="text-12-regular" classes={{ button: "!px-0" }}>
               {mcpConnected() > 0 ? `${mcpConnected()} ` : ""}
               {language.t("status.popover.tab.mcp")}
             </Tabs.Trigger>
-            <Tabs.Trigger value="lsp" data-slot="tab" class="text-12-regular">
+            <Tabs.Trigger value="lsp" data-slot="tab" class="text-12-regular" classes={{ button: "!px-0" }}>
               {lspCount() > 0 ? `${lspCount()} ` : ""}
               {language.t("status.popover.tab.lsp")}
             </Tabs.Trigger>
-            <Tabs.Trigger value="plugins" data-slot="tab" class="text-12-regular">
+            <Tabs.Trigger value="plugins" data-slot="tab" class="text-12-regular" classes={{ button: "!px-0" }}>
               {pluginCount() > 0 ? `${pluginCount()} ` : ""}
               {language.t("status.popover.tab.plugins")}
             </Tabs.Trigger>
