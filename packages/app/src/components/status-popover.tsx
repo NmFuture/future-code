@@ -199,7 +199,7 @@ export function StatusModal(props: { directory: string }) {
       >
         <Tabs
           aria-label={language.t("status.popover.ariaLabel")}
-          class="tabs bg-background-strong rounded-xl overflow-hidden"
+          class="tabs !bg-surface-raised-stronger-non-alpha rounded-xl overflow-hidden"
           data-component="tabs"
           data-active="servers"
           defaultValue="servers"
