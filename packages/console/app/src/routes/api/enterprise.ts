@@ -44,7 +44,7 @@ ${body.phone ? `${body.phone}<br>` : ""}`.trim()
       message: body.message,
     })
 
-    if (AWS.isSESAvailable()) {
+    if (AWS.hasSES()) {
       await AWS.sendEmail({
         to: "contact@anoma.ly",
         subject: `Enterprise Inquiry from ${body.name}`,
