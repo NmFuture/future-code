@@ -48,8 +48,8 @@ export namespace SessionProcessor {
         needsCompaction = false
         const shouldBreak = (await Config.get()).experimental?.continue_loop_on_deny !== true
         while (true) {
+          let currentText: MessageV2.TextPart | undefined
           try {
-            let currentText: MessageV2.TextPart | undefined
             let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
             const stream = await LLM.stream(streamInput)
 
@@ -384,6 +384,15 @@ export namespace SessionProcessor {
               })
               SessionStatus.set(input.sessionID, { type: "idle" })
             }
+          }
+          if (currentText) {
+            currentText.text = currentText.text.trimEnd()
+            currentText.time = {
+              start: currentText.time?.start ?? Date.now(),
+              end: Date.now(),
+            }
+            await Session.updatePart(currentText)
+            currentText = undefined
           }
           if (snapshot) {
             const patch = await Snapshot.patch(snapshot)
