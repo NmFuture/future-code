@@ -13,7 +13,9 @@ export default function Enterprise() {
   const [formData, setFormData] = createSignal({
     name: "",
     role: "",
+    company: "",
     email: "",
+    phone: "",
     message: "",
   })
   const [isSubmitting, setIsSubmitting] = createSignal(false)
@@ -42,7 +44,9 @@ export default function Enterprise() {
         setFormData({
           name: "",
           role: "",
+          company: "",
           email: "",
+          phone: "",
           message: "",
         })
         setTimeout(() => setShowSuccess(false), 5000)
@@ -172,6 +176,17 @@ export default function Enterprise() {
                     </div>
 
                     <div data-component="form-group">
+                      <label for="company">{i18n.t("enterprise.form.company.label")}</label>
+                      <input
+                        id="company"
+                        type="text"
+                        value={formData().company}
+                        onInput={handleInputChange("company")}
+                        placeholder={i18n.t("enterprise.form.company.placeholder")}
+                      />
+                    </div>
+
+                    <div data-component="form-group">
                       <label for="email">{i18n.t("enterprise.form.email.label")}</label>
                       <input
                         id="email"
@@ -180,6 +195,17 @@ export default function Enterprise() {
                         value={formData().email}
                         onInput={handleInputChange("email")}
                         placeholder={i18n.t("enterprise.form.email.placeholder")}
+                      />
+                    </div>
+
+                    <div data-component="form-group">
+                      <label for="phone">{i18n.t("enterprise.form.phone.label")}</label>
+                      <input
+                        id="phone"
+                        type="tel"
+                        value={formData().phone}
+                        onInput={handleInputChange("phone")}
+                        placeholder={i18n.t("enterprise.form.phone.placeholder")}
                       />
                     </div>
 

@@ -2,11 +2,14 @@ import type { APIEvent } from "@solidjs/start/server"
 import { AWS } from "@opencode-ai/console-core/aws.js"
 import { i18n } from "~/i18n"
 import { localeFromRequest } from "~/lib/language"
+import { createLead } from "~/lib/salesforce"
 
 interface EnterpriseFormData {
   name: string
   role: string
+  company?: string
   email: string
+  phone?: string
   message: string
 }
 
@@ -15,32 +18,40 @@ export async function POST(event: APIEvent) {
   try {
     const body = (await event.request.json()) as EnterpriseFormData
 
-    // Validate required fields
     if (!body.name || !body.role || !body.email || !body.message) {
       return Response.json({ error: dict["enterprise.form.error.allFieldsRequired"] }, { status: 400 })
     }
 
-    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(body.email)) {
       return Response.json({ error: dict["enterprise.form.error.invalidEmailFormat"] }, { status: 400 })
     }
 
-    // Create email content
     const emailContent = `
 ${body.message}<br><br>
 --<br>
 ${body.name}<br>
 ${body.role}<br>
-${body.email}`.trim()
+${body.company ? `${body.company}<br>` : ""}${body.email}<br>
+${body.phone ? `${body.phone}<br>` : ""}`.trim()
 
-    // Send email using AWS SES
-    await AWS.sendEmail({
-      to: "contact@anoma.ly",
-      subject: `Enterprise Inquiry from ${body.name}`,
-      body: emailContent,
-      replyTo: body.email,
+    await createLead({
+      name: body.name,
+      role: body.role,
+      company: body.company,
+      email: body.email,
+      phone: body.phone,
+      message: body.message,
     })
+
+    if (AWS.isSESAvailable()) {
+      await AWS.sendEmail({
+        to: "contact@anoma.ly",
+        subject: `Enterprise Inquiry from ${body.name}`,
+        body: emailContent,
+        replyTo: body.email,
+      })
+    }
 
     return Response.json({ success: true, message: dict["enterprise.form.success.submitted"] }, { status: 200 })
   } catch (error) {
