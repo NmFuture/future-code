@@ -25,7 +25,7 @@ export default defineConfig({
         name: "opencode:virtual-server-module",
         enforce: "pre",
         resolveId(id) {
-          if (id.endsWith("opencode/src/node")) return this.resolve(`${OPENCODE_SERVER_DIST}/node.js`)
+          if (id === "virtual:opencode-server") return this.resolve(`${OPENCODE_SERVER_DIST}/node.js`)
         },
       },
       {
