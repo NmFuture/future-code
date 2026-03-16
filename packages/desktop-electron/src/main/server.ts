@@ -1,5 +1,5 @@
 import { dialog } from "electron"
-import { bootstrap, Config, Server } from "./oc-server"
+import { bootstrap, Config, Server } from "virtual:opencode-server"
 
 import { type CommandChild } from "./cli"
 import { DEFAULT_SERVER_URL_KEY, WSL_ENABLED_KEY } from "./constants"
@@ -33,9 +33,7 @@ export function setWslConfig(config: WslConfig) {
 }
 
 export async function getSavedServerUrl(): Promise<string | null> {
-  const config = await bootstrap(process.cwd(), async () => {
-    return await Config.get()
-  })
+  const config = await bootstrap(process.cwd(), () => Config.get())
 
   const direct = getDefaultServerUrl()
   if (direct) return direct

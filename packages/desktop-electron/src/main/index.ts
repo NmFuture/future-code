@@ -29,7 +29,7 @@ import { registerIpcHandlers, sendDeepLinks, sendMenuCommand } from "./ipc"
 import { initLogging } from "./logging"
 import { parseMarkdown } from "./markdown"
 import { createMenu } from "./menu"
-import { Server } from "./oc-server"
+import { Server } from "virtual:opencode-server"
 import {
   checkHealth,
   checkHealthOrAskRetry,
@@ -41,11 +41,6 @@ import {
   spawnLocalServer,
 } from "./server"
 import { createLoadingWindow, createMainWindow, setDockIcon } from "./windows"
-
-const result = await Server.listen({
-  port: 1338,
-  hostname: "0.0.0.0",
-})
 
 type ServerConnection =
   | { variant: "existing"; url: string }
