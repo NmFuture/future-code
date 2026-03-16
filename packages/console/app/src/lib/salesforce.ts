@@ -4,13 +4,16 @@ const baseUrl = () => {
   return url.replace(/\/$/, "")
 }
 
-async function getAccessToken(): Promise<string | null> {
-  const instanceUrl = baseUrl()
+async function login() {
+  const url = baseUrl()
   const clientId = process.env.SALESFORCE_CLIENT_ID
   const clientSecret = process.env.SALESFORCE_CLIENT_SECRET
   const username = process.env.SALESFORCE_USERNAME
   const password = process.env.SALESFORCE_PASSWORD
-  if (!instanceUrl || !clientId || !clientSecret) return null
+  if (!url || !clientId || !clientSecret) {
+    console.error("Salesforce credentials are incomplete")
+    return null
+  }
 
   const usePassword = username && password
   const params = new URLSearchParams({
@@ -20,16 +23,32 @@ async function getAccessToken(): Promise<string | null> {
     ...(usePassword && { username, password }),
   })
 
-  const res = await fetch(`${instanceUrl}/services/oauth2/token`, {
+  const res = await fetch(`${url}/services/oauth2/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params.toString(),
+  }).catch((err) => {
+    console.error("Failed to fetch Salesforce access token:", err)
+    return null
   })
 
-  if (!res.ok) return null
+  if (!res) return null
+
+  if (!res.ok) {
+    console.error("Failed to fetch Salesforce access token:", res.status, await res.text())
+    return null
+  }
 
   const data = (await res.json()) as { access_token?: string; instance_url?: string }
-  return data.access_token ?? null
+  if (!data.access_token) {
+    console.error("Salesforce auth response did not include an access token")
+    return null
+  }
+
+  return {
+    token: data.access_token,
+    url: data.instance_url ?? url,
+  }
 }
 
 export interface SalesforceLeadInput {
@@ -42,16 +61,13 @@ export interface SalesforceLeadInput {
 }
 
 export async function createLead(input: SalesforceLeadInput): Promise<boolean> {
-  const instanceUrl = baseUrl()
-  if (!instanceUrl) return false
+  const auth = await login()
+  if (!auth) return false
 
-  const token = await getAccessToken()
-  if (!token) return false
-
-  const res = await fetch(`${instanceUrl}/services/data/v59.0/sobjects/Lead`, {
+  const res = await fetch(`${auth.url}/services/data/v59.0/sobjects/Lead`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${auth.token}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -63,9 +79,17 @@ export async function createLead(input: SalesforceLeadInput): Promise<boolean> {
       Description: input.message,
       LeadSource: process.env.SALESFORCE_LEAD_SOURCE ?? "Website",
     }),
+  }).catch((err) => {
+    console.error("Failed to create Salesforce lead:", err)
+    return null
   })
 
-  if (!res.ok) return false
+  if (!res) return false
+
+  if (!res.ok) {
+    console.error("Failed to create Salesforce lead:", res.status, await res.text())
+    return false
+  }
 
   return true
 }

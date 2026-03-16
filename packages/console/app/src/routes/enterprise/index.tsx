@@ -16,10 +16,12 @@ export default function Enterprise() {
     company: "",
     email: "",
     phone: "",
+    alias: "",
     message: "",
   })
   const [isSubmitting, setIsSubmitting] = createSignal(false)
   const [showSuccess, setShowSuccess] = createSignal(false)
+  const [error, setError] = createSignal("")
 
   const handleInputChange = (field: string) => (e: Event) => {
     const target = e.target as HTMLInputElement | HTMLTextAreaElement
@@ -28,6 +30,8 @@ export default function Enterprise() {
 
   const handleSubmit = async (e: Event) => {
     e.preventDefault()
+    setError("")
+    setShowSuccess(false)
     setIsSubmitting(true)
 
     try {
@@ -47,12 +51,18 @@ export default function Enterprise() {
           company: "",
           email: "",
           phone: "",
+          alias: "",
           message: "",
         })
         setTimeout(() => setShowSuccess(false), 5000)
+        return
       }
+
+      const data = (await response.json().catch(() => null)) as { error?: string } | null
+      setError(data?.error ?? i18n.t("enterprise.form.error.internalServer"))
     } catch (error) {
       console.error("Failed to submit form:", error)
+      setError(i18n.t("enterprise.form.error.internalServer"))
     } finally {
       setIsSubmitting(false)
     }
@@ -151,6 +161,19 @@ export default function Enterprise() {
               <div data-component="enterprise-column-2">
                 <div data-component="enterprise-form">
                   <form onSubmit={handleSubmit}>
+                    <div class="sr-only" aria-hidden="true">
+                      <input
+                        type="text"
+                        name="alias"
+                        tabIndex={-1}
+                        autocomplete="new-password"
+                        inputmode="none"
+                        spellcheck={false}
+                        value={formData().alias}
+                        onInput={handleInputChange("alias")}
+                      />
+                    </div>
+
                     <div data-component="form-group">
                       <label for="name">{i18n.t("enterprise.form.name.label")}</label>
                       <input
@@ -227,6 +250,7 @@ export default function Enterprise() {
                   </form>
 
                   {showSuccess() && <div data-component="success-message">{i18n.t("enterprise.form.success")}</div>}
+                  {error() && <div data-component="error-message">{error()}</div>}
                 </div>
               </div>
             </div>
