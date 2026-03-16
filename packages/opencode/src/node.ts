@@ -1,8 +1,3 @@
-import { Server } from "./server/server"
-
-const result = await Server.listen({
-  port: 1338,
-  hostname: "0.0.0.0",
-})
-
-console.log(result)
+export { Config } from "./config/config"
+export { Server } from "./server/server"
+export { bootstrap } from "./cli/bootstrap"

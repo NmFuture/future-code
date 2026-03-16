@@ -1,11 +1,14 @@
-import { defineConfig } from "electron-vite"
+import * as fs from "node:fs/promises"
 import appPlugin from "@opencode-ai/app/vite"
+import { defineConfig } from "electron-vite"
 
 const channel = (() => {
   const raw = process.env.OPENCODE_CHANNEL
   if (raw === "dev" || raw === "beta" || raw === "prod") return raw
   return "dev"
 })()
+
+const OPENCODE_SERVER_DIST = "../opencode/dist/node"
 
 export default defineConfig({
   main: {
@@ -17,6 +20,25 @@ export default defineConfig({
         input: { index: "src/main/index.ts" },
       },
     },
+    plugins: [
+      {
+        name: "opencode:virtual-server-module",
+        enforce: "pre",
+        resolveId(id) {
+          if (id.endsWith("opencode/src/node")) return this.resolve(`${OPENCODE_SERVER_DIST}/node.js`)
+        },
+      },
+      {
+        name: "opencode:copy-server-assets",
+        enforce: "post",
+        async closeBundle() {
+          for (const l of await fs.readdir(OPENCODE_SERVER_DIST)) {
+            if (l.endsWith(".js")) continue
+            await fs.writeFile(`./out/main/${l}`, await fs.readFile(`${OPENCODE_SERVER_DIST}/${l}`))
+          }
+        },
+      },
+    ],
   },
   preload: {
     build: {

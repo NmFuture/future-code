@@ -22,15 +22,14 @@ app.setName(app.isPackaged ? APP_NAMES[CHANNEL] : "OpenCode Dev")
 app.setPath("userData", join(app.getPath("appData"), app.isPackaged ? APP_IDS[CHANNEL] : "ai.opencode.desktop.dev"))
 const { autoUpdater } = pkg
 
-import type { InitStep, ServerReadyData, SqliteMigrationProgress, WslConfig } from "../preload/types"
+import type { InitStep, ServerReadyData, WslConfig } from "../preload/types"
 import { checkAppExists, resolveAppPath, wslPath } from "./apps"
-import type { CommandChild } from "./cli"
-import { installCli, syncCli } from "./cli"
 import { CHANNEL, UPDATER_ENABLED } from "./constants"
-import { registerIpcHandlers, sendDeepLinks, sendMenuCommand, sendSqliteMigrationProgress } from "./ipc"
+import { registerIpcHandlers, sendDeepLinks, sendMenuCommand } from "./ipc"
 import { initLogging } from "./logging"
 import { parseMarkdown } from "./markdown"
 import { createMenu } from "./menu"
+import { Server } from "./oc-server"
 import {
   checkHealth,
   checkHealthOrAskRetry,
@@ -43,6 +42,11 @@ import {
 } from "./server"
 import { createLoadingWindow, createMainWindow, setDockIcon } from "./windows"
 
+const result = await Server.listen({
+  port: 1338,
+  hostname: "0.0.0.0",
+})
+
 type ServerConnection =
   | { variant: "existing"; url: string }
   | {
@@ -52,7 +56,7 @@ type ServerConnection =
       health: {
         wait: Promise<void>
       }
-      events: any
+      server: Server.Listener
     }
 
 const initEmitter = new EventEmitter()
@@ -60,7 +64,7 @@ let initStep: InitStep = { phase: "server_waiting" }
 
 let mainWindow: BrowserWindow | null = null
 const loadingWindow: BrowserWindow | null = null
-let sidecar: CommandChild | null = null
+let server: Server.Listener | null = null
 const loadingComplete = defer<void>()
 
 const pendingDeepLinks: string[] = []
@@ -108,7 +112,7 @@ function setupApp() {
     app.setAsDefaultProtocolClient("opencode")
     setDockIcon()
     setupAutoUpdater()
-    syncCli()
+    // syncCli()
     await initialize()
   })
 }
@@ -149,15 +153,15 @@ async function setupServerConnection(): Promise<ServerConnection> {
   }
 
   const password = randomUUID()
-  const { child, health, events } = spawnLocalServer(hostname, port, password)
-  sidecar = child
+  const { listener, health } = await spawnLocalServer(hostname, port, password)
+  server = listener
 
   return {
     variant: "cli",
     url: localUrl,
     password,
     health,
-    events,
+    server,
   }
 }
 
@@ -174,15 +178,15 @@ async function initialize() {
     })
 
     const cliHealthCheck = (() => {
-      if (serverConnection.variant == "cli") {
+      if (serverConnection.variant === "cli") {
         return async () => {
-          const { events, health } = serverConnection
-          events.on("sqlite", (progress: SqliteMigrationProgress) => {
-            setInitStep({ phase: "sqlite_waiting" })
-            if (loadingWindow) sendSqliteMigrationProgress(loadingWindow, progress)
-            if (mainWindow) sendSqliteMigrationProgress(mainWindow, progress)
-            if (progress.type === "Done") sqliteDone?.resolve()
-          })
+          const { health } = serverConnection
+          // events.on("sqlite", (progress: SqliteMigrationProgress) => {
+          //   setInitStep({ phase: "sqlite_waiting" })
+          //   if (loadingWindow) sendSqliteMigrationProgress(loadingWindow, progress)
+          //   if (mainWindow) sendSqliteMigrationProgress(mainWindow, progress)
+          //   if (progress.type === "Done") sqliteDone?.resolve()
+          // })
           await health.wait
           serverReady.resolve({
             url: serverConnection.url,
@@ -243,9 +247,9 @@ function wireMenu() {
   if (!mainWindow) return
   createMenu({
     trigger: (id) => mainWindow && sendMenuCommand(mainWindow, id),
-    installCli: () => {
-      void installCli()
-    },
+    // installCli: () => {
+    //   void installCli()
+    // },
     checkForUpdates: () => {
       void checkForUpdates(true)
     },
@@ -260,7 +264,7 @@ function wireMenu() {
 
 registerIpcHandlers({
   killSidecar: () => killSidecar(),
-  installCli: async () => installCli(),
+  // installCli: async () => installCli(),
   awaitInitialization: async (sendStep) => {
     sendStep(initStep)
     const listener = (step: InitStep) => sendStep(step)
@@ -291,9 +295,9 @@ registerIpcHandlers({
 })
 
 function killSidecar() {
-  if (!sidecar) return
-  sidecar.kill()
-  sidecar = null
+  if (!server) return
+  server.stop()
+  server = null
 }
 
 function ensureLoopbackNoProxy() {

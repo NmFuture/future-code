@@ -1,21 +1,21 @@
 import { Hono } from "hono"
 import { stream } from "hono/streaming"
-import { describeRoute, validator, resolver } from "hono-openapi"
+import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
-import { Session } from "../../session"
-import { MessageV2 } from "../../session/message-v2"
-import { SessionPrompt } from "../../session/prompt"
-import { SessionCompaction } from "../../session/compaction"
-import { SessionRevert } from "../../session/revert"
+import { PermissionNext } from "@/permission/next"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
-import { Todo } from "../../session/todo"
-import { Agent } from "../../agent/agent"
 import { Snapshot } from "@/snapshot"
-import { Log } from "../../util/log"
-import { PermissionNext } from "@/permission/next"
-import { errors } from "../error"
+import { Agent } from "../../agent/agent"
+import { Session } from "../../session"
+import { SessionCompaction } from "../../session/compaction"
+import { MessageV2 } from "../../session/message-v2"
+import { SessionPrompt } from "../../session/prompt"
+import { SessionRevert } from "../../session/revert"
+import { Todo } from "../../session/todo"
 import { lazy } from "../../util/lazy"
+import { Log } from "../../util/log"
+import { errors } from "../error"
 
 const log = Log.create({ service: "server" })
 
@@ -43,11 +43,12 @@ export const SessionRoutes = lazy(() =>
         z.object({
           directory: z.string().optional().meta({ description: "Filter sessions by project directory" }),
           roots: z.coerce.boolean().optional().meta({ description: "Only return root sessions (no parentID)" }),
-          start: z.coerce
-            .number()
-            .optional()
-            .meta({ description: "Filter sessions updated on or after this timestamp (milliseconds since epoch)" }),
-          search: z.string().optional().meta({ description: "Filter sessions by title (case-insensitive)" }),
+          start: z.coerce.number().optional().meta({
+            description: "Filter sessions updated on or after this timestamp (milliseconds since epoch)",
+          }),
+          search: z.string().optional().meta({
+            description: "Filter sessions by title (case-insensitive)",
+          }),
           limit: z.coerce.number().optional().meta({ description: "Maximum number of sessions to return" }),
         }),
       ),
@@ -281,7 +282,10 @@ export const SessionRoutes = lazy(() =>
           session = await Session.setTitle({ sessionID, title: updates.title })
         }
         if (updates.time?.archived !== undefined) {
-          session = await Session.setArchived({ sessionID, time: updates.time.archived })
+          session = await Session.setArchived({
+            sessionID,
+            time: updates.time.archived,
+          })
         }
 
         return c.json(session)
@@ -790,13 +794,11 @@ export const SessionRoutes = lazy(() =>
       ),
       validator("json", SessionPrompt.PromptInput.omit({ sessionID: true })),
       async (c) => {
-        c.status(204)
-        c.header("Content-Type", "application/json")
-        return stream(c, async () => {
-          const sessionID = c.req.valid("param").sessionID
-          const body = c.req.valid("json")
-          SessionPrompt.prompt({ ...body, sessionID })
-        })
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        SessionPrompt.prompt({ ...body, sessionID })
+
+        return c.body(null, 204)
       },
     )
     .post(

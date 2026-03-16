@@ -4,7 +4,7 @@ import { UPDATER_ENABLED } from "./constants"
 
 type Deps = {
   trigger: (id: string) => void
-  installCli: () => void
+  // installCli: () => void
   checkForUpdates: () => void
   reload: () => void
   relaunch: () => void
@@ -23,10 +23,10 @@ export function createMenu(deps: Deps) {
           enabled: UPDATER_ENABLED,
           click: () => deps.checkForUpdates(),
         },
-        {
-          label: "Install CLI...",
-          click: () => deps.installCli(),
-        },
+        // {
+        //   label: "Install CLI...",
+        //   click: () => deps.installCli(),
+        // },
         {
           label: "Reload Webview",
           click: () => deps.reload(),

@@ -58,7 +58,7 @@ export namespace Server {
 
   export const Default = lazy(() => create({}).app)
 
-  function create(opts: { cors?: string[] }) {
+  function create(opts: { cors?: string[]; password?: string; username?: string }) {
     const log = Log.create({ service: "server" })
     const app = new Hono()
     const ws = createNodeWebSocket({ app })
@@ -604,6 +604,8 @@ export namespace Server {
     mdns?: boolean
     mdnsDomain?: string
     cors?: string[]
+    password?: string
+    username?: string
   }): Promise<Listener> {
     const log = Log.create({ service: "server" })
     const built = create({

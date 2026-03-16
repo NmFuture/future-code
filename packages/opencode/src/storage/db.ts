@@ -1,7 +1,6 @@
 import { type SQLiteBunDatabase } from "drizzle-orm/bun-sqlite"
 import { migrate } from "drizzle-orm/bun-sqlite/migrator"
 import { type SQLiteTransaction } from "drizzle-orm/sqlite-core"
-export * from "drizzle-orm"
 import { Context } from "../util/context"
 import { lazy } from "../util/lazy"
 import { Global } from "../global"
@@ -14,6 +13,7 @@ import { Installation } from "../installation"
 import { Flag } from "../flag/flag"
 import { iife } from "@/util/iife"
 import { init } from "#db"
+export * from "drizzle-orm"
 
 declare const OPENCODE_MIGRATIONS: { sql: string; timestamp: number; name: string }[] | undefined
 

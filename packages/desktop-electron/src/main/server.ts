@@ -1,6 +1,7 @@
 import { dialog } from "electron"
+import { bootstrap, Config, Server } from "./oc-server"
 
-import { getConfig, serve, type CommandChild, type Config } from "./cli"
+import { type CommandChild } from "./cli"
 import { DEFAULT_SERVER_URL_KEY, WSL_ENABLED_KEY } from "./constants"
 import { store } from "./store"
 
@@ -32,16 +33,24 @@ export function setWslConfig(config: WslConfig) {
 }
 
 export async function getSavedServerUrl(): Promise<string | null> {
+  const config = await bootstrap(process.cwd(), async () => {
+    return await Config.get()
+  })
+
   const direct = getDefaultServerUrl()
   if (direct) return direct
 
-  const config = await getConfig().catch(() => null)
   if (!config) return null
   return getServerUrlFromConfig(config)
 }
 
-export function spawnLocalServer(hostname: string, port: number, password: string) {
-  const { child, exit, events } = serve(hostname, port, password)
+export async function spawnLocalServer(hostname: string, port: number, password: string) {
+  const listener = await Server.listen({
+    port,
+    hostname,
+    username: "opencode",
+    password,
+  })
 
   const wait = (async () => {
     const url = `http://${hostname}:${port}`
@@ -53,19 +62,10 @@ export function spawnLocalServer(hostname: string, port: number, password: strin
       }
     }
 
-    const terminated = async () => {
-      const payload = await exit
-      throw new Error(
-        `Sidecar terminated before becoming healthy (code=${payload.code ?? "unknown"} signal=${
-          payload.signal ?? "unknown"
-        })`,
-      )
-    }
-
-    await Promise.race([ready(), terminated()])
+    await ready()
   })()
 
-  return { child, health: { wait }, events }
+  return { listener, health: { wait } }
 }
 
 export async function checkHealth(url: string, password?: string | null): Promise<boolean> {
@@ -119,7 +119,7 @@ export function normalizeHostnameForUrl(hostname: string) {
   return hostname
 }
 
-export function getServerUrlFromConfig(config: Config) {
+export function getServerUrlFromConfig(config: Config.Info) {
   const server = config.server
   if (!server?.port) return null
   const host = server.hostname ? normalizeHostnameForUrl(server.hostname) : "127.0.0.1"
