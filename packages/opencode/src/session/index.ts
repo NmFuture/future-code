@@ -10,9 +10,10 @@ import { Flag } from "../flag/flag"
 import { Identifier } from "../id/id"
 import { Installation } from "../installation"
 
-import { Database, NotFoundError, eq, and, or, gte, isNull, desc, like, inArray, lt } from "../storage/db"
+import { Database, NotFoundError, eq, and, gte, isNull, desc, like, inArray, lt } from "../storage/db"
+import { DatabaseEvent } from "../storage/event"
 import type { SQL } from "../storage/db"
-import { SessionTable, MessageTable, PartTable } from "./session.sql"
+import { SessionTable } from "./session.sql"
 import { ProjectTable } from "../project/project.sql"
 import { Storage } from "@/storage/storage"
 import { Log } from "../util/log"
@@ -179,26 +180,42 @@ export namespace Session {
   export type GlobalInfo = z.output<typeof GlobalInfo>
 
   export const Event = {
-    Created: BusEvent.define(
+    Created: DatabaseEvent.define(
       "session.created",
+      "v1",
       z.object({
+        id: z.string(),
         info: Info,
       }),
     ),
-    Updated: BusEvent.define(
+    Shared: DatabaseEvent.define(
+      "session.shared",
+      "v1",
+      z.object({
+        id: z.string(),
+        url: z.string().optional(),
+      }),
+    ),
+    Touch: DatabaseEvent.define("session.touch", "v1", z.object({ id: z.string(), time: z.number() })),
+    Updated: DatabaseEvent.define(
       "session.updated",
+      "v1",
       z.object({
+        id: z.string(),
         info: Info,
       }),
     ),
-    Deleted: BusEvent.define(
+    Deleted: DatabaseEvent.define(
       "session.deleted",
+      "v1",
       z.object({
+        id: z.string(),
         info: Info,
       }),
     ),
-    Diff: BusEvent.define(
+    Diff: DatabaseEvent.agg("sessionID").define(
       "session.diff",
+      "v1",
       z.object({
         sessionID: z.string(),
         diff: Snapshot.FileDiff.array(),
@@ -277,18 +294,8 @@ export namespace Session {
   )
 
   export const touch = fn(Identifier.schema("session"), async (sessionID) => {
-    const now = Date.now()
-    Database.use((db) => {
-      const row = db
-        .update(SessionTable)
-        .set({ time_updated: now })
-        .where(eq(SessionTable.id, sessionID))
-        .returning()
-        .get()
-      if (!row) throw new NotFoundError({ message: `Session not found: ${sessionID}` })
-      const info = fromRow(row)
-      Database.effect(() => Bus.publish(Event.Updated, { info }))
-    })
+    const time = Date.now()
+    DatabaseEvent.run(Event.Touch, { id: sessionID, time })
   })
 
   export async function createNext(input: {
@@ -315,20 +322,16 @@ export namespace Session {
       },
     }
     log.info("created", result)
-    Database.use((db) => {
-      db.insert(SessionTable).values(toRow(result)).run()
-      Database.effect(() =>
-        Bus.publish(Event.Created, {
-          info: result,
-        }),
-      )
-    })
+
+    DatabaseEvent.run(Event.Created, { id: result.id, info: result })
+
     const cfg = await Config.get()
     if (!result.parentID && (Flag.OPENCODE_AUTO_SHARE || cfg.share === "auto"))
       share(result.id).catch(() => {
         // Silently ignore sharing errors during session creation
       })
     Bus.publish(Event.Updated, {
+      id: result.id,
       info: result,
     })
     return result
@@ -354,12 +357,9 @@ export namespace Session {
     }
     const { ShareNext } = await import("@/share/share-next")
     const share = await ShareNext.create(id)
-    Database.use((db) => {
-      const row = db.update(SessionTable).set({ share_url: share.url }).where(eq(SessionTable.id, id)).returning().get()
-      if (!row) throw new NotFoundError({ message: `Session not found: ${id}` })
-      const info = fromRow(row)
-      Database.effect(() => Bus.publish(Event.Updated, { info }))
-    })
+
+    DatabaseEvent.run(Event.Shared, { id, url: share.url })
+
     return share
   })
 
@@ -367,12 +367,8 @@ export namespace Session {
     // Use ShareNext to remove the share (same as share function uses ShareNext to create)
     const { ShareNext } = await import("@/share/share-next")
     await ShareNext.remove(id)
-    Database.use((db) => {
-      const row = db.update(SessionTable).set({ share_url: null }).where(eq(SessionTable.id, id)).returning().get()
-      if (!row) throw new NotFoundError({ message: `Session not found: ${id}` })
-      const info = fromRow(row)
-      Database.effect(() => Bus.publish(Event.Updated, { info }))
-    })
+
+    DatabaseEvent.run(Event.Shared, { id, url: undefined })
   })
 
   export const setTitle = fn(
@@ -659,46 +655,25 @@ export namespace Session {
   })
 
   export const remove = fn(Identifier.schema("session"), async (sessionID) => {
-    const project = Instance.project
     try {
       const session = await get(sessionID)
       for (const child of await children(sessionID)) {
         await remove(child.id)
       }
       await unshare(sessionID).catch(() => {})
-      // CASCADE delete handles messages and parts automatically
-      Database.use((db) => {
-        db.delete(SessionTable).where(eq(SessionTable.id, sessionID)).run()
-        Database.effect(() =>
-          Bus.publish(Event.Deleted, {
-            info: session,
-          }),
-        )
-      })
+
+      DatabaseEvent.run(Event.Deleted, { id: sessionID, info: session })
     } catch (e) {
       log.error(e)
     }
   })
 
   export const updateMessage = fn(MessageV2.Info, async (msg) => {
-    const time_created = msg.time.created
-    const { id, sessionID, ...data } = msg
-    Database.use((db) => {
-      db.insert(MessageTable)
-        .values({
-          id,
-          session_id: sessionID,
-          time_created,
-          data,
-        })
-        .onConflictDoUpdate({ target: MessageTable.id, set: { data } })
-        .run()
-      Database.effect(() =>
-        Bus.publish(MessageV2.Event.Updated, {
-          info: msg,
-        }),
-      )
+    DatabaseEvent.run(MessageV2.Event.Updated, {
+      id: msg.sessionID,
+      info: msg,
     })
+
     return msg
   })
 
@@ -708,17 +683,9 @@ export namespace Session {
       messageID: Identifier.schema("message"),
     }),
     async (input) => {
-      // CASCADE delete handles parts automatically
-      Database.use((db) => {
-        db.delete(MessageTable)
-          .where(and(eq(MessageTable.id, input.messageID), eq(MessageTable.session_id, input.sessionID)))
-          .run()
-        Database.effect(() =>
-          Bus.publish(MessageV2.Event.Removed, {
-            sessionID: input.sessionID,
-            messageID: input.messageID,
-          }),
-        )
+      DatabaseEvent.run(MessageV2.Event.Removed, {
+        sessionID: input.sessionID,
+        messageID: input.messageID,
       })
       return input.messageID
     },
@@ -731,17 +698,10 @@ export namespace Session {
       partID: Identifier.schema("part"),
     }),
     async (input) => {
-      Database.use((db) => {
-        db.delete(PartTable)
-          .where(and(eq(PartTable.id, input.partID), eq(PartTable.session_id, input.sessionID)))
-          .run()
-        Database.effect(() =>
-          Bus.publish(MessageV2.Event.PartRemoved, {
-            sessionID: input.sessionID,
-            messageID: input.messageID,
-            partID: input.partID,
-          }),
-        )
+      DatabaseEvent.run(MessageV2.Event.PartRemoved, {
+        sessionID: input.sessionID,
+        messageID: input.messageID,
+        partID: input.partID,
       })
       return input.partID
     },
@@ -750,24 +710,10 @@ export namespace Session {
   const UpdatePartInput = MessageV2.Part
 
   export const updatePart = fn(UpdatePartInput, async (part) => {
-    const { id, messageID, sessionID, ...data } = part
-    const time = Date.now()
-    Database.use((db) => {
-      db.insert(PartTable)
-        .values({
-          id,
-          message_id: messageID,
-          session_id: sessionID,
-          time_created: time,
-          data,
-        })
-        .onConflictDoUpdate({ target: PartTable.id, set: { data } })
-        .run()
-      Database.effect(() =>
-        Bus.publish(MessageV2.Event.PartUpdated, {
-          part: structuredClone(part),
-        }),
-      )
+    DatabaseEvent.run(MessageV2.Event.PartUpdated, {
+      sessionID: part.sessionID,
+      part: structuredClone(part),
+      time: Date.now(),
     })
     return part
   })

@@ -90,6 +90,10 @@ export namespace Installation {
     return CHANNEL === "local"
   }
 
+  export function isTesting() {
+    return process.env.NODE_ENV === "test"
+  }
+
   export async function method() {
     if (process.execPath.includes(path.join(".opencode", "bin"))) return "curl"
     if (process.execPath.includes(path.join(".local", "bin"))) return "curl"

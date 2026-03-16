@@ -29,6 +29,9 @@ const log = Log.create({ service: "db" })
 
 export namespace Database {
   export const Path = iife(() => {
+    if (Installation.isTesting()) {
+      return ":memory:"
+    }
     const channel = Installation.CHANNEL
     if (["latest", "beta"].includes(channel) || Flag.OPENCODE_DISABLE_CHANNEL_DB)
       return path.join(Global.Path.data, "opencode.db")
@@ -153,19 +156,37 @@ export namespace Database {
     }
   }
 
-  export function transaction<T>(callback: (tx: TxOrDb) => T): T {
+  type NotPromise<T> = T extends Promise<any> ? never : T
+
+  export function _transaction<T>(
+    callback: (tx: TxOrDb) => NotPromise<T>,
+    options?: {
+      behavior?: "deferred" | "immediate" | "exclusive"
+    },
+  ): NotPromise<T> {
     try {
       return callback(ctx.use().tx)
     } catch (err) {
       if (err instanceof Context.NotFound) {
         const effects: (() => void | Promise<void>)[] = []
-        const result = (Client().transaction as any)((tx: TxOrDb) => {
-          return ctx.provide({ tx, effects }, () => callback(tx))
-        })
+        const result = Client().transaction(
+          (tx: TxOrDb) => {
+            return ctx.provide({ tx, effects }, () => callback(tx))
+          },
+          { behavior: options?.behavior },
+        )
         for (const effect of effects) effect()
-        return result
+        return result as NotPromise<T>
       }
       throw err
     }
+  }
+
+  export function transaction<T>(callback: (tx: TxOrDb) => NotPromise<T>) {
+    return _transaction(callback)
+  }
+
+  export function immediateTransaction<T>(callback: (tx: TxOrDb) => NotPromise<T>) {
+    return _transaction(callback, { behavior: "immediate" })
   }
 }

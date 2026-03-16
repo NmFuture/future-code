@@ -4,6 +4,7 @@ import { streamSSE } from "hono/streaming"
 import z from "zod"
 import { BusEvent } from "@/bus/bus-event"
 import { GlobalBus } from "@/bus/global"
+import { DatabaseEvent } from "@/storage/event"
 import { Instance } from "../../project/instance"
 import { Installation } from "@/installation"
 import { Log } from "../../util/log"
@@ -102,6 +103,75 @@ export const GlobalRoutes = lazy(() =>
               GlobalBus.off("event", handler)
               resolve()
               log.info("global event disconnected")
+            })
+          })
+        })
+      },
+    )
+    .get(
+      "/db-event",
+      describeRoute({
+        summary: "Get database global events",
+        description: "Subscribe to database global events from the OpenCode system using server-sent events.",
+        operationId: "global.db-event",
+        responses: {
+          200: {
+            description: "Event stream",
+            content: {
+              "text/event-stream": {
+                schema: resolver(
+                  z
+                    .object({
+                      directory: z.string(),
+                      payload: BusEvent.payloads(),
+                    })
+                    .meta({
+                      ref: "GlobalEvent",
+                    }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        log.info("global event connected")
+        c.header("X-Accel-Buffering", "no")
+        c.header("X-Content-Type-Options", "nosniff")
+        return streamSSE(c, async (stream) => {
+          stream.writeSSE({
+            data: JSON.stringify({
+              payload: {
+                type: "server.connected",
+                properties: {},
+              },
+            }),
+          })
+          async function handler(event: any) {
+            await stream.writeSSE({
+              data: JSON.stringify(event),
+            })
+          }
+          DatabaseEvent.Bus.on("event", handler)
+
+          // Send heartbeat every 10s to prevent stalled proxy streams.
+          const heartbeat = setInterval(() => {
+            stream.writeSSE({
+              data: JSON.stringify({
+                payload: {
+                  type: "server.heartbeat",
+                  properties: {},
+                },
+              }),
+            })
+          }, 10_000)
+
+          await new Promise<void>((resolve) => {
+            stream.onAbort(() => {
+              clearInterval(heartbeat)
+              DatabaseEvent.Bus.off("event", handler)
+              resolve()
+              log.info("db global event disconnected")
             })
           })
         })
