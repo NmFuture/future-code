@@ -17,6 +17,7 @@ import { createSdk } from "../utils"
 
 type Sdk = ReturnType<typeof createSdk>
 type PermissionRule = { permission: string; pattern: string; action: "allow" | "deny" | "ask" }
+type Child = { id: string }
 
 async function withDockSession<T>(
   sdk: Sdk,
@@ -72,6 +73,31 @@ async function expectPermissionOpen(page: any) {
   await expect(page.locator(promptSelector)).toBeVisible()
 }
 
+async function withMockSession<T>(page: any, child: Child | undefined, fn: () => Promise<T>) {
+  if (!child) return await fn()
+
+  const list = async (route: any) => {
+    const res = await route.fetch()
+    const json = await res.json()
+    const list = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : undefined
+    if (Array.isArray(list) && !list.some((item) => item?.id === child.id)) list.push(child)
+    await route.fulfill({
+      status: res.status(),
+      headers: res.headers(),
+      contentType: "application/json",
+      body: JSON.stringify(json),
+    })
+  }
+
+  await page.route("**/session?*", list)
+
+  try {
+    return await fn()
+  } finally {
+    await page.unroute("**/session?*", list)
+  }
+}
+
 async function withMockQuestion<T>(
   page: any,
   request: {
@@ -85,6 +111,7 @@ async function withMockQuestion<T>(
       custom?: boolean
     }>
   },
+  child: Child | undefined,
   fn: (state: { resolved: () => Promise<void> }) => Promise<T>,
 ) {
   let pending = [
@@ -124,7 +151,7 @@ async function withMockQuestion<T>(
   }
 
   try {
-    return await fn(state)
+    return await withMockSession(page, child, () => fn(state))
   } finally {
     await page.unroute("**/question", list)
     await page.unroute("**/question/*/reply", reply)
@@ -235,7 +262,7 @@ async function withMockPermission<T>(
     metadata?: Record<string, unknown>
     always?: string[]
   },
-  opts: { child?: any } | undefined,
+  child: Child | undefined,
   fn: (state: { resolved: () => Promise<void> }) => Promise<T>,
 ) {
   let pending = [
@@ -268,23 +295,6 @@ async function withMockPermission<T>(
   await page.route("**/permission", list)
   await page.route("**/session/*/permissions/*", reply)
 
-  const sessionList = opts?.child
-    ? async (route: any) => {
-        const res = await route.fetch()
-        const json = await res.json()
-        const list = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : undefined
-        if (Array.isArray(list) && !list.some((item) => item?.id === opts.child?.id)) list.push(opts.child)
-        await route.fulfill({
-          status: res.status(),
-          headers: res.headers(),
-          contentType: "application/json",
-          body: JSON.stringify(json),
-        })
-      }
-    : undefined
-
-  if (sessionList) await page.route("**/session?*", sessionList)
-
   const state = {
     async resolved() {
       await expect.poll(() => pending.length, { timeout: 10_000 }).toBe(0)
@@ -292,11 +302,10 @@ async function withMockPermission<T>(
   }
 
   try {
-    return await fn(state)
+    return await withMockSession(page, child, () => fn(state))
   } finally {
     await page.unroute("**/permission", list)
     await page.unroute("**/session/*/permissions/*", reply)
-    if (sessionList) await page.unroute("**/session?*", sessionList)
   }
 }
 
@@ -345,6 +354,7 @@ test("blocked question flow unblocks after submit", async ({ page, sdk, gotoSess
           },
         ],
       },
+      undefined,
       async (state) => {
         await page.goto(page.url())
         await expectQuestionBlocked(page)
@@ -473,6 +483,7 @@ test("child session question request blocks parent dock and unblocks after submi
             },
           ],
         },
+        child,
         async (state) => {
           await page.goto(page.url())
           await expectQuestionBlocked(page)
@@ -518,7 +529,7 @@ test("child session permission request blocks parent dock and supports allow onc
           patterns: ["/tmp/opencode-e2e-perm-child"],
           metadata: { description: "Need child permission" },
         },
-        { child },
+        child,
         async (state) => {
           await page.goto(page.url())
           await expectPermissionBlocked(page)
@@ -583,6 +594,7 @@ test("keyboard focus stays off prompt while blocked", async ({ page, sdk, gotoSe
           },
         ],
       },
+      undefined,
       async () => {
         await page.goto(page.url())
         await expectQuestionBlocked(page)
