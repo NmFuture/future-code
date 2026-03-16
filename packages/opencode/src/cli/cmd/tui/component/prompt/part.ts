@@ -1,11 +1,14 @@
-import { PartID } from "@/session/schema"
+import { PartID, type PartID as PID } from "@/session/schema"
+import type { PromptInfo } from "./history"
 
-export function strip<T extends { id?: string; messageID?: string; sessionID?: string }>(part: T) {
+type Item = PromptInfo["parts"][number]
+
+export function strip(part: Item & { id: string; messageID: string; sessionID: string }): Item {
   const { id: _id, messageID: _messageID, sessionID: _sessionID, ...rest } = part
   return rest
 }
 
-export function assign<T extends object>(part: T) {
+export function assign(part: Item): Item & { id: PID } {
   return {
     ...part,
     id: PartID.ascending(),
