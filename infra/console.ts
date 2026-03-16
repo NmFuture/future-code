@@ -204,8 +204,6 @@ const AWS_SES_SECRET_ACCESS_KEY = new sst.Secret("AWS_SES_SECRET_ACCESS_KEY")
 const SALESFORCE_CLIENT_ID = new sst.Secret("SALESFORCE_CLIENT_ID")
 const SALESFORCE_CLIENT_SECRET = new sst.Secret("SALESFORCE_CLIENT_SECRET")
 const SALESFORCE_INSTANCE_URL = new sst.Secret("SALESFORCE_INSTANCE_URL")
-const SALESFORCE_USERNAME = new sst.Secret("SALESFORCE_USERNAME")
-const SALESFORCE_PASSWORD = new sst.Secret("SALESFORCE_PASSWORD")
 
 const logProcessor = new sst.cloudflare.Worker("LogProcessor", {
   handler: "packages/console/function/src/log-processor.ts",
@@ -228,8 +226,6 @@ new sst.cloudflare.x.SolidStart("Console", {
     SALESFORCE_CLIENT_ID,
     SALESFORCE_CLIENT_SECRET,
     SALESFORCE_INSTANCE_URL,
-    SALESFORCE_USERNAME,
-    SALESFORCE_PASSWORD,
     ZEN_BLACK_PRICE,
     ZEN_LITE_PRICE,
     new sst.Secret("ZEN_LIMITS"),

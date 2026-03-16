@@ -8,19 +8,15 @@ async function login() {
   const url = baseUrl()
   const clientId = process.env.SALESFORCE_CLIENT_ID
   const clientSecret = process.env.SALESFORCE_CLIENT_SECRET
-  const username = process.env.SALESFORCE_USERNAME
-  const password = process.env.SALESFORCE_PASSWORD
   if (!url || !clientId || !clientSecret) {
     console.error("Salesforce credentials are incomplete")
     return null
   }
 
-  const usePassword = username && password
   const params = new URLSearchParams({
-    grant_type: usePassword ? "password" : "client_credentials",
+    grant_type: "client_credentials",
     client_id: clientId,
     client_secret: clientSecret,
-    ...(usePassword && { username, password }),
   })
 
   const res = await fetch(`${url}/services/oauth2/token`, {

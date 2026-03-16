@@ -5,8 +5,6 @@ export {}
 const url = process.env.SALESFORCE_INSTANCE_URL?.replace(/\/$/, "")
 const clientId = process.env.SALESFORCE_CLIENT_ID
 const clientSecret = process.env.SALESFORCE_CLIENT_SECRET
-const username = process.env.SALESFORCE_USERNAME
-const password = process.env.SALESFORCE_PASSWORD
 
 if (!url || !clientId || !clientSecret) {
   console.error("Missing SALESFORCE_INSTANCE_URL, SALESFORCE_CLIENT_ID, or SALESFORCE_CLIENT_SECRET")
@@ -14,10 +12,9 @@ if (!url || !clientId || !clientSecret) {
 }
 
 const body = new URLSearchParams({
-  grant_type: username && password ? "password" : "client_credentials",
+  grant_type: "client_credentials",
   client_id: clientId,
   client_secret: clientSecret,
-  ...(username && password ? { username, password } : {}),
 })
 
 async function main() {
