@@ -34,6 +34,10 @@ function withVcs(
   )
 }
 
+function withVcsOnly(directory: string, body: (rt: ManagedRuntime.ManagedRuntime<VcsService, never>) => Promise<void>) {
+  return withServices(directory, VcsService.layer, body)
+}
+
 type BranchEvent = { directory?: string; payload: { type: string; properties: { branch?: string } } }
 
 /** Wait for a Vcs.Event.BranchUpdated event on GlobalBus */
@@ -112,6 +116,78 @@ describeVcs("Vcs", () => {
       await pending
       const current = await rt.runPromise(VcsService.use((s) => s.branch()))
       expect(current).toBe(branch)
+    })
+  })
+})
+
+describe("Vcs diff", () => {
+  afterEach(() => Instance.disposeAll())
+
+  test("defaultBranch() falls back to main", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await $`git branch -M main`.cwd(tmp.path).quiet()
+
+    await withVcsOnly(tmp.path, async (rt) => {
+      const branch = await rt.runPromise(VcsService.use((s) => s.defaultBranch()))
+      expect(branch).toBe("main")
+    })
+  })
+
+  test("detects current branch from the active worktree", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await using wt = await tmpdir()
+    await $`git branch -M main`.cwd(tmp.path).quiet()
+    const dir = path.join(wt.path, "feature")
+    await $`git worktree add -b feature/test ${dir} HEAD`.cwd(tmp.path).quiet()
+
+    await withVcsOnly(dir, async (rt) => {
+      const [branch, base] = await Promise.all([
+        rt.runPromise(VcsService.use((s) => s.branch())),
+        rt.runPromise(VcsService.use((s) => s.defaultBranch())),
+      ])
+      expect(branch).toBe("feature/test")
+      expect(base).toBe("main")
+    })
+  })
+
+  test("diff('git') returns uncommitted changes", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await fs.writeFile(path.join(tmp.path, "file.txt"), "original\n", "utf-8")
+    await $`git add .`.cwd(tmp.path).quiet()
+    await $`git commit --no-gpg-sign -m "add file"`.cwd(tmp.path).quiet()
+    await fs.writeFile(path.join(tmp.path, "file.txt"), "changed\n", "utf-8")
+
+    await withVcsOnly(tmp.path, async (rt) => {
+      const diff = await rt.runPromise(VcsService.use((s) => s.diff("git")))
+      expect(diff).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            file: "file.txt",
+            status: "modified",
+          }),
+        ]),
+      )
+    })
+  })
+
+  test("diff('branch') returns changes against default branch", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await $`git branch -M main`.cwd(tmp.path).quiet()
+    await $`git checkout -b feature/test`.cwd(tmp.path).quiet()
+    await fs.writeFile(path.join(tmp.path, "branch.txt"), "hello\n", "utf-8")
+    await $`git add .`.cwd(tmp.path).quiet()
+    await $`git commit --no-gpg-sign -m "branch file"`.cwd(tmp.path).quiet()
+
+    await withVcsOnly(tmp.path, async (rt) => {
+      const diff = await rt.runPromise(VcsService.use((s) => s.diff("branch")))
+      expect(diff).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            file: "branch.txt",
+            status: "added",
+          }),
+        ]),
+      )
     })
   })
 })
