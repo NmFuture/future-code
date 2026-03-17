@@ -1,11 +1,11 @@
 import z from "zod"
-import type { MessageV2 } from "../session/message-v2"
 import type { Agent } from "../agent/agent"
 import type { PermissionNext } from "../permission/next"
+import type { MessageV2 } from "../session/message-v2"
 import { Truncate } from "./truncation"
 
 export namespace Tool {
-  interface Metadata {
+  export interface Metadata {
     [key: string]: any
   }
 
@@ -59,7 +59,9 @@ export namespace Tool {
             toolInfo.parameters.parse(args)
           } catch (error) {
             if (error instanceof z.ZodError && toolInfo.formatValidationError) {
-              throw new Error(toolInfo.formatValidationError(error), { cause: error })
+              throw new Error(toolInfo.formatValidationError(error), {
+                cause: error,
+              })
             }
             throw new Error(
               `The ${id} tool was called with invalid arguments: ${error}.\nPlease rewrite the input so it satisfies the expected schema.`,

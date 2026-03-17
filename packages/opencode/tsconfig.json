@@ -8,6 +8,11 @@
     "types": [],
     "noUncheckedIndexedAccess": false,
     "customConditions": ["browser"],
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist/types",
+    "rootDir": "src",
     "paths": {
       "@/*": ["./src/*"],
       "@tui/*": ["./src/cli/cmd/tui/*"]
@@ -19,5 +24,6 @@
         "namespaceImportPackages": ["effect", "@effect/*"]
       }
     ]
-  }
+  },
+  "include": ["src"]
 }

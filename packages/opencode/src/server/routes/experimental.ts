@@ -83,7 +83,7 @@ export const ExperimentalRoutes = lazy(() =>
             id: t.id,
             description: t.description,
             // Handle both Zod schemas and plain JSON schemas
-            parameters: (t.parameters as any)?._def ? zodToJsonSchema(t.parameters as any) : t.parameters,
+            parameters: (t.parameters as any)?._def ? zodToJsonSchema(t.parameters as any) : (t.parameters as any),
           })),
         )
       },
