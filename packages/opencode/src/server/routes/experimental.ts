@@ -1,15 +1,15 @@
 import { Hono } from "hono"
-import { describeRoute, validator, resolver } from "hono-openapi"
+import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
-import { ToolRegistry } from "../../tool/registry"
-import { Worktree } from "../../worktree"
+import { zodToJsonSchema } from "zod-to-json-schema"
+import { MCP } from "../../mcp"
 import { Instance } from "../../project/instance"
 import { Project } from "../../project/project"
-import { MCP } from "../../mcp"
 import { Session } from "../../session"
-import { zodToJsonSchema } from "zod-to-json-schema"
-import { errors } from "../error"
+import { ToolRegistry } from "../../tool/registry"
 import { lazy } from "../../util/lazy"
+import { Worktree } from "../../worktree"
+import { errors } from "../error"
 import { WorkspaceRoutes } from "./workspace"
 
 export const ExperimentalRoutes = lazy(() =>
@@ -77,13 +77,16 @@ export const ExperimentalRoutes = lazy(() =>
       ),
       async (c) => {
         const { provider, model } = c.req.valid("query")
-        const tools = await ToolRegistry.tools({ providerID: provider, modelID: model })
+        const tools = await ToolRegistry.tools({
+          providerID: provider,
+          modelID: model,
+        })
         return c.json(
           tools.map((t) => ({
             id: t.id,
             description: t.description,
             // Handle both Zod schemas and plain JSON schemas
-            parameters: (t.parameters as any)?._def ? zodToJsonSchema(t.parameters as any) : (t.parameters as any),
+            parameters: (t.parameters as any)?._def ? zodToJsonSchema(t.parameters as any) : (t.parameters as unknown),
           })),
         )
       },
@@ -210,15 +213,15 @@ export const ExperimentalRoutes = lazy(() =>
         z.object({
           directory: z.string().optional().meta({ description: "Filter sessions by project directory" }),
           roots: z.coerce.boolean().optional().meta({ description: "Only return root sessions (no parentID)" }),
-          start: z.coerce
-            .number()
-            .optional()
-            .meta({ description: "Filter sessions updated on or after this timestamp (milliseconds since epoch)" }),
-          cursor: z.coerce
-            .number()
-            .optional()
-            .meta({ description: "Return sessions updated before this timestamp (milliseconds since epoch)" }),
-          search: z.string().optional().meta({ description: "Filter sessions by title (case-insensitive)" }),
+          start: z.coerce.number().optional().meta({
+            description: "Filter sessions updated on or after this timestamp (milliseconds since epoch)",
+          }),
+          cursor: z.coerce.number().optional().meta({
+            description: "Return sessions updated before this timestamp (milliseconds since epoch)",
+          }),
+          search: z.string().optional().meta({
+            description: "Filter sessions by title (case-insensitive)",
+          }),
           limit: z.coerce.number().optional().meta({ description: "Maximum number of sessions to return" }),
           archived: z.coerce.boolean().optional().meta({ description: "Include archived sessions (default false)" }),
         }),

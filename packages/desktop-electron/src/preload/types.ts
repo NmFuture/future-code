@@ -13,7 +13,6 @@ export type LinuxDisplayBackend = "wayland" | "auto"
 
 export type ElectronAPI = {
   killSidecar: () => Promise<void>
-  installCli: () => Promise<string>
   awaitInitialization: (onStep: (step: InitStep) => void) => Promise<ServerReadyData>
   getDefaultServerUrl: () => Promise<string | null>
   setDefaultServerUrl: (url: string | null) => Promise<void>

@@ -22,6 +22,7 @@ app.setName(app.isPackaged ? APP_NAMES[CHANNEL] : "OpenCode Dev")
 app.setPath("userData", join(app.getPath("appData"), app.isPackaged ? APP_IDS[CHANNEL] : "ai.opencode.desktop.dev"))
 const { autoUpdater } = pkg
 
+import type { Server } from "virtual:opencode-server"
 import type { InitStep, ServerReadyData, WslConfig } from "../preload/types"
 import { checkAppExists, resolveAppPath, wslPath } from "./apps"
 import { CHANNEL, UPDATER_ENABLED } from "./constants"
@@ -29,7 +30,6 @@ import { registerIpcHandlers, sendDeepLinks, sendMenuCommand } from "./ipc"
 import { initLogging } from "./logging"
 import { parseMarkdown } from "./markdown"
 import { createMenu } from "./menu"
-import { Server } from "virtual:opencode-server"
 import {
   checkHealth,
   checkHealthOrAskRetry,
@@ -107,7 +107,6 @@ function setupApp() {
     app.setAsDefaultProtocolClient("opencode")
     setDockIcon()
     setupAutoUpdater()
-    // syncCli()
     await initialize()
   })
 }
@@ -242,9 +241,6 @@ function wireMenu() {
   if (!mainWindow) return
   createMenu({
     trigger: (id) => mainWindow && sendMenuCommand(mainWindow, id),
-    // installCli: () => {
-    //   void installCli()
-    // },
     checkForUpdates: () => {
       void checkForUpdates(true)
     },
@@ -259,7 +255,6 @@ function wireMenu() {
 
 registerIpcHandlers({
   killSidecar: () => killSidecar(),
-  // installCli: async () => installCli(),
   awaitInitialization: async (sendStep) => {
     sendStep(initStep)
     const listener = (step: InitStep) => sendStep(step)
