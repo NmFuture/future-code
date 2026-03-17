@@ -98,6 +98,21 @@ export function Prompt(props: PromptProps) {
   const pasteStyleId = syntax().getStyleId("extmark.paste")!
   let promptPartTypeId = 0
 
+  createEffect(
+    on(
+      () => store.mode,
+      (mode, prev) => {
+        if (prev === "shell") command.keybinds(true)
+        if (mode === "shell") command.keybinds(false)
+      },
+      { defer: true },
+    ),
+  )
+
+  onCleanup(() => {
+    if (store.mode === "shell") command.keybinds(true)
+  })
+
   sdk.event.on(TuiEvent.PromptAppend.type, (evt) => {
     if (!input || input.isDestroyed) return
     input.insertText(evt.properties.text)
