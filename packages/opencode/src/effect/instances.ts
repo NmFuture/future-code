@@ -67,8 +67,4 @@ export class Instances extends ServiceMap.Service<Instances, LayerMap.LayerMap<s
   static get(directory: string): Layer.Layer<InstanceServices, never, Instances> {
     return Layer.unwrap(Instances.use((map) => Effect.succeed(map.get(directory))))
   }
-
-  static invalidate(directory: string): Effect.Effect<void, never, Instances> {
-    return Instances.use((map) => map.invalidate(directory))
-  }
 }
