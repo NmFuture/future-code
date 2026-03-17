@@ -1,10 +1,54 @@
 import { Bus } from "@/bus"
-import { Database, NotFoundError, eq, and } from "../storage/db"
+import { NotFoundError, eq, and } from "../storage/db"
 import { DatabaseEvent } from "@/storage/event"
 import { Session } from "./index"
 import { MessageV2 } from "./message-v2"
 import { SessionTable, MessageTable, PartTable } from "./session.sql"
 import { ProjectTable } from "../project/project.sql"
+
+type DeepPartial<T> = {
+  [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K]
+}
+
+function grab<T extends object, K1 extends keyof T, X>(
+  obj: T,
+  field1: K1,
+  cb?: (val: NonNullable<T[K1]>) => X,
+): X | undefined {
+  if (obj == undefined || !(field1 in obj)) return undefined
+
+  const val = obj[field1]
+  if (val && typeof val === "object" && cb) {
+    return cb(val)
+  }
+  return (val === undefined ? null : val) as X | undefined
+}
+
+export function toPartialRow(info: DeepPartial<Session.Info>) {
+  const obj = {
+    id: grab(info, "id"),
+    project_id: grab(info, "projectID"),
+    workspace_id: grab(info, "workspaceID"),
+    parent_id: grab(info, "parentID"),
+    slug: grab(info, "slug"),
+    directory: grab(info, "directory"),
+    title: grab(info, "title"),
+    version: grab(info, "version"),
+    share_url: grab(info, "share", (v) => grab(v, "url")),
+    summary_additions: grab(info, "summary", (v) => grab(v, "additions")),
+    summary_deletions: grab(info, "summary", (v) => grab(v, "deletions")),
+    summary_files: grab(info, "summary", (v) => grab(v, "files")),
+    summary_diffs: grab(info, "summary", (v) => grab(v, "diffs")),
+    revert: grab(info, "revert"),
+    permission: grab(info, "permission"),
+    time_created: grab(info, "time", (v) => grab(v, "created")),
+    time_updated: grab(info, "time", (v) => grab(v, "updated")),
+    time_compacting: grab(info, "time", (v) => grab(v, "compacting")),
+    time_archived: grab(info, "time", (v) => grab(v, "archived")),
+  }
+
+  return Object.fromEntries(Object.entries(obj).filter(([_, val]) => val !== undefined))
+}
 
 DatabaseEvent.addProjector(Session.Event.Created, (db, data) => {
   const existing = db
@@ -27,10 +71,15 @@ DatabaseEvent.addProjector(Session.Event.Created, (db, data) => {
   db.insert(SessionTable).values(Session.toRow(data.info)).run()
 })
 
+DatabaseEvent.addProjector(Session.Event.Updated, (db, data) => {
+  const info = data.info
+  const row = db.update(SessionTable).set(toPartialRow(info)).where(eq(SessionTable.id, data.id)).returning().get()
+  if (!row) throw new NotFoundError({ message: `Session not found: ${data.id}` })
+})
+
 DatabaseEvent.addProjector(Session.Event.Shared, (db, data) => {
   const row = db.update(SessionTable).set({ share_url: data.url }).where(eq(SessionTable.id, data.id)).returning().get()
   if (!row) throw new NotFoundError({ message: `Session not found: ${data.id}` })
-  const info = Session.fromRow(row)
 })
 
 DatabaseEvent.addProjector(Session.Event.Touch, (db, data) => {

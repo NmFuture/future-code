@@ -202,7 +202,9 @@ export namespace Session {
       "v1",
       z.object({
         id: z.string(),
-        info: Info,
+        info: Info.partial().extend({
+          time: Info.shape.time.partial().optional(),
+        }),
       }),
     ),
     Deleted: DatabaseEvent.define(
@@ -213,9 +215,8 @@ export namespace Session {
         info: Info,
       }),
     ),
-    Diff: DatabaseEvent.agg("sessionID").define(
+    Diff: BusEvent.define(
       "session.diff",
-      "v1",
       z.object({
         sessionID: z.string(),
         diff: Snapshot.FileDiff.array(),
@@ -330,10 +331,10 @@ export namespace Session {
       share(result.id).catch(() => {
         // Silently ignore sharing errors during session creation
       })
-    Bus.publish(Event.Updated, {
-      id: result.id,
-      info: result,
-    })
+    // Bus.publish(Event.Updated, {
+    //   id: result.id,
+    //   info: result,
+    // })
     return result
   }
 
@@ -377,18 +378,7 @@ export namespace Session {
       title: z.string(),
     }),
     async (input) => {
-      return Database.use((db) => {
-        const row = db
-          .update(SessionTable)
-          .set({ title: input.title })
-          .where(eq(SessionTable.id, input.sessionID))
-          .returning()
-          .get()
-        if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
-        const info = fromRow(row)
-        Database.effect(() => Bus.publish(Event.Updated, { info }))
-        return info
-      })
+      DatabaseEvent.run(Event.Updated, { id: input.sessionID, info: { title: input.title } })
     },
   )
 
@@ -398,18 +388,7 @@ export namespace Session {
       time: z.number().optional(),
     }),
     async (input) => {
-      return Database.use((db) => {
-        const row = db
-          .update(SessionTable)
-          .set({ time_archived: input.time })
-          .where(eq(SessionTable.id, input.sessionID))
-          .returning()
-          .get()
-        if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
-        const info = fromRow(row)
-        Database.effect(() => Bus.publish(Event.Updated, { info }))
-        return info
-      })
+      DatabaseEvent.run(Event.Updated, { id: input.sessionID, info: { time: { archived: input.time } } })
     },
   )
 
@@ -419,17 +398,9 @@ export namespace Session {
       permission: PermissionNext.Ruleset,
     }),
     async (input) => {
-      return Database.use((db) => {
-        const row = db
-          .update(SessionTable)
-          .set({ permission: input.permission, time_updated: Date.now() })
-          .where(eq(SessionTable.id, input.sessionID))
-          .returning()
-          .get()
-        if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
-        const info = fromRow(row)
-        Database.effect(() => Bus.publish(Event.Updated, { info }))
-        return info
+      DatabaseEvent.run(Event.Updated, {
+        id: input.sessionID,
+        info: { permission: input.permission, time: { updated: Date.now() } },
       })
     },
   )
@@ -441,42 +412,24 @@ export namespace Session {
       summary: Info.shape.summary,
     }),
     async (input) => {
-      return Database.use((db) => {
-        const row = db
-          .update(SessionTable)
-          .set({
-            revert: input.revert ?? null,
-            summary_additions: input.summary?.additions,
-            summary_deletions: input.summary?.deletions,
-            summary_files: input.summary?.files,
-            time_updated: Date.now(),
-          })
-          .where(eq(SessionTable.id, input.sessionID))
-          .returning()
-          .get()
-        if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
-        const info = fromRow(row)
-        Database.effect(() => Bus.publish(Event.Updated, { info }))
-        return info
+      DatabaseEvent.run(Event.Updated, {
+        id: input.sessionID,
+        info: {
+          summary: input.summary,
+          time: { updated: Date.now() },
+          revert: input.revert,
+        },
       })
     },
   )
 
   export const clearRevert = fn(Identifier.schema("session"), async (sessionID) => {
-    return Database.use((db) => {
-      const row = db
-        .update(SessionTable)
-        .set({
-          revert: null,
-          time_updated: Date.now(),
-        })
-        .where(eq(SessionTable.id, sessionID))
-        .returning()
-        .get()
-      if (!row) throw new NotFoundError({ message: `Session not found: ${sessionID}` })
-      const info = fromRow(row)
-      Database.effect(() => Bus.publish(Event.Updated, { info }))
-      return info
+    DatabaseEvent.run(Event.Updated, {
+      id: sessionID,
+      info: {
+        time: { updated: Date.now() },
+        revert: undefined,
+      },
     })
   })
 
@@ -486,22 +439,12 @@ export namespace Session {
       summary: Info.shape.summary,
     }),
     async (input) => {
-      return Database.use((db) => {
-        const row = db
-          .update(SessionTable)
-          .set({
-            summary_additions: input.summary?.additions,
-            summary_deletions: input.summary?.deletions,
-            summary_files: input.summary?.files,
-            time_updated: Date.now(),
-          })
-          .where(eq(SessionTable.id, input.sessionID))
-          .returning()
-          .get()
-        if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
-        const info = fromRow(row)
-        Database.effect(() => Bus.publish(Event.Updated, { info }))
-        return info
+      DatabaseEvent.run(Event.Updated, {
+        id: input.sessionID,
+        info: {
+          time: { updated: Date.now() },
+          summary: input.summary,
+        },
       })
     },
   )

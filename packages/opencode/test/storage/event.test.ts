@@ -12,6 +12,19 @@ beforeEach(() => {
   Database.Client.reset()
 })
 
+function withInstance(fn: () => void | Promise<void>) {
+  return async () => {
+    await using tmp = await tmpdir()
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        await fn()
+      },
+    })
+  }
+}
+
 describe("DatabaseEvent", () => {
   const Created = DatabaseEvent.define("item.created", "v1", z.object({ id: z.string(), name: z.string() }))
   const Sent = DatabaseEvent.agg("item_id").define("item.sent", "v1", z.object({ item_id: z.string(), to: z.string() }))
@@ -20,95 +33,117 @@ describe("DatabaseEvent", () => {
   DatabaseEvent.addProjector(Sent, () => {})
 
   describe("run", () => {
-    test("inserts event row", () => {
-      DatabaseEvent.run(Created, { id: "msg_1", name: "first" })
-      const rows = Database.use((db) => db.select().from(EventTable).all())
-      expect(rows).toHaveLength(1)
-      expect(rows[0].name).toBe("item.created.v1")
-      expect(rows[0].aggregateId).toBe("msg_1")
-    })
+    test(
+      "inserts event row",
+      withInstance(() => {
+        DatabaseEvent.run(Created, { id: "msg_1", name: "first" })
+        const rows = Database.use((db) => db.select().from(EventTable).all())
+        expect(rows).toHaveLength(1)
+        expect(rows[0].name).toBe("item.created.v1")
+        expect(rows[0].aggregateId).toBe("msg_1")
+      }),
+    )
 
-    test("increments seq per aggregate", () => {
-      DatabaseEvent.run(Created, { id: "msg_1", name: "first" })
-      DatabaseEvent.run(Created, { id: "msg_1", name: "second" })
-      const rows = Database.use((db) => db.select().from(EventTable).all())
-      console.log(rows)
-      expect(rows).toHaveLength(2)
-      expect(rows[1].seq).toBe(rows[0].seq + 1)
-    })
+    test(
+      "increments seq per aggregate",
+      withInstance(() => {
+        DatabaseEvent.run(Created, { id: "msg_1", name: "first" })
+        DatabaseEvent.run(Created, { id: "msg_1", name: "second" })
+        const rows = Database.use((db) => db.select().from(EventTable).all())
+        expect(rows).toHaveLength(2)
+        expect(rows[1].seq).toBe(rows[0].seq + 1)
+      }),
+    )
 
-    test("uses custom aggregate field from agg()", () => {
-      DatabaseEvent.run(Sent, { item_id: "msg_1", to: "james" })
-      const rows = Database.use((db) => db.select().from(EventTable).all())
-      expect(rows).toHaveLength(1)
-      expect(rows[0].aggregateId).toBe("msg_1")
-    })
+    test(
+      "uses custom aggregate field from agg()",
+      withInstance(() => {
+        DatabaseEvent.run(Sent, { item_id: "msg_1", to: "james" })
+        const rows = Database.use((db) => db.select().from(EventTable).all())
+        expect(rows).toHaveLength(1)
+        expect(rows[0].aggregateId).toBe("msg_1")
+      }),
+    )
 
-    test("emits events", async () => {
-      await using tmp = await tmpdir()
+    test(
+      "emits events",
+      withInstance(() => {
+        const events: Array<{
+          type: string
+          properties: { seq: number; aggregateId: string; data: { id: string; name: string } }
+        }> = []
+        const unsub = Bus.subscribeAll((event) => events.push(event))
 
-      Instance.provide({
-        directory: tmp.path,
-        fn: async () => {
-          const dbEvents: DatabaseEvent.BusEvent[] = []
-          DatabaseEvent.Bus.on("event", (e) => dbEvents.push(e))
+        DatabaseEvent.run(Created, { id: "msg_1", name: "test" })
 
-          const events: Array<any> = []
-          const unsubscribe = Bus.subscribeAll((e) => events.push(e))
-
-          DatabaseEvent.run(Created, { id: "msg_1", name: "test" })
-
-          expect(events).toHaveLength(1)
-          expect(events[0]).toEqual({
-            type: "item.created",
-            properties: {
+        expect(events).toHaveLength(1)
+        expect(events[0]).toEqual({
+          type: "item.created.v1",
+          properties: {
+            seq: 1,
+            aggregateId: "msg_1",
+            data: {
               id: "msg_1",
               name: "test",
             },
-          })
+          },
+        })
 
-          expect(dbEvents).toHaveLength(1)
-
-          DatabaseEvent.Bus.removeAllListeners("event")
-          unsubscribe()
-        },
-      })
-    })
+        unsub()
+      }),
+    )
   })
 
   describe("replay", () => {
-    test("inserts event from external payload", () => {
-      const id = Identifier.descending("message")
-      DatabaseEvent.replay({
-        type: "item.created.v1",
-        data: { seq: 1, aggregateId: id, data: { id, name: "replayed" } },
-      })
-      const rows = Database.use((db) => db.select().from(EventTable).all())
-      expect(rows).toHaveLength(1)
-      expect(rows[0].aggregateId).toBe(id)
-    })
-
-    test("throws on sequence mismatch", () => {
-      const id = Identifier.descending("message")
-      DatabaseEvent.replay({
-        type: "item.created.v1",
-        data: { seq: 1, aggregateId: id, data: { id, name: "first" } },
-      })
-      expect(() =>
+    test(
+      "inserts event from external payload",
+      withInstance(() => {
+        const id = Identifier.descending("message")
         DatabaseEvent.replay({
           type: "item.created.v1",
-          data: { seq: 5, aggregateId: id, data: { id, name: "bad" } },
-        }),
-      ).toThrow(/Sequence mismatch/)
-    })
+          seq: 0,
+          aggregateId: id,
+          data: { id, name: "replayed" },
+        })
+        const rows = Database.use((db) => db.select().from(EventTable).all())
+        expect(rows).toHaveLength(1)
+        expect(rows[0].aggregateId).toBe(id)
+      }),
+    )
 
-    test("throws on unknown event type", () => {
-      expect(() =>
+    test(
+      "throws on sequence mismatch",
+      withInstance(() => {
+        const id = Identifier.descending("message")
         DatabaseEvent.replay({
-          type: "unknown.event.1",
-          data: { seq: 0, aggregateId: "x", data: {} },
-        }),
-      ).toThrow(/Unknown event type/)
-    })
+          type: "item.created.v1",
+          seq: 0,
+          aggregateId: id,
+          data: { id, name: "first" },
+        })
+        expect(() =>
+          DatabaseEvent.replay({
+            type: "item.created.v1",
+            seq: 5,
+            aggregateId: id,
+            data: { id, name: "bad" },
+          }),
+        ).toThrow(/Sequence mismatch/)
+      }),
+    )
+
+    test(
+      "throws on unknown event type",
+      withInstance(() => {
+        expect(() =>
+          DatabaseEvent.replay({
+            type: "unknown.event.1",
+            seq: 0,
+            aggregateId: "x",
+            data: {},
+          }),
+        ).toThrow(/Unknown event type/)
+      }),
+    )
   })
 })
