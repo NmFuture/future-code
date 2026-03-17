@@ -9,6 +9,7 @@ import { Log } from "@/util/log"
 import { Wildcard } from "@/util/wildcard"
 import { Deferred, Effect, Layer, Schema, ServiceMap } from "effect"
 import z from "zod"
+import { evaluate } from "./evaluate"
 import { PermissionID } from "./schema"
 
 const log = Log.create({ service: "permission" })
@@ -239,13 +240,4 @@ export class PermissionService extends ServiceMap.Service<PermissionService, Per
       return PermissionService.of({ ask, reply, list })
     }),
   )
-}
-
-export function evaluate(permission: string, pattern: string, ...rulesets: Ruleset[]): Rule {
-  const merged = rulesets.flat()
-  log.info("evaluate", { permission, pattern, ruleset: merged })
-  const match = merged.findLast(
-    (rule) => Wildcard.match(permission, rule.permission) && Wildcard.match(pattern, rule.pattern),
-  )
-  return match ?? { action: "ask", permission, pattern: "*" }
 }

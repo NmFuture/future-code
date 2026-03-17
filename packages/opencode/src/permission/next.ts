@@ -3,6 +3,7 @@ import { Config } from "@/config/config"
 import { fn } from "@/util/fn"
 import { Wildcard } from "@/util/wildcard"
 import os from "os"
+import { evaluate as run } from "./evaluate"
 import * as S from "./service"
 
 export namespace PermissionNext {
@@ -66,7 +67,7 @@ export namespace PermissionNext {
   }
 
   export function evaluate(permission: string, pattern: string, ...rulesets: Ruleset[]): Rule {
-    return S.evaluate(permission, pattern, ...rulesets)
+    return run(permission, pattern, ...rulesets)
   }
 
   const EDIT_TOOLS = ["edit", "write", "apply_patch", "multiedit"]
