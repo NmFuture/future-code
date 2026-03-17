@@ -41,7 +41,6 @@ ${body.role}<br>
 ${body.company ? `${body.company}<br>` : ""}${body.email}<br>
 ${body.phone ? `${body.phone}<br>` : ""}`.trim()
 
-    const ses = AWS.hasSES()
     const [lead, mail] = await Promise.all([
       createLead({
         name: body.name,
@@ -51,27 +50,22 @@ ${body.phone ? `${body.phone}<br>` : ""}`.trim()
         phone: body.phone,
         message: body.message,
       }),
-      ses
-        ? AWS.sendEmail({
-            to: "contact@anoma.ly",
-            subject: `Enterprise Inquiry from ${body.name}`,
-            body: emailContent,
-            replyTo: body.email,
-          }).then(
-            () => true,
-            (err) => {
-              console.error("Failed to send enterprise email:", err)
-              return false
-            },
-          )
-        : Promise.resolve(false),
+      AWS.sendEmail({
+        to: "contact@anoma.ly",
+        subject: `Enterprise Inquiry from ${body.name}`,
+        body: emailContent,
+        replyTo: body.email,
+      }).then(
+        () => true,
+        (err) => {
+          console.error("Failed to send enterprise email:", err)
+          return false
+        },
+      ),
     ])
 
     if (!lead && !mail) {
-      console.error("Enterprise inquiry delivery failed", {
-        email: body.email,
-        ses,
-      })
+      console.error("Enterprise inquiry delivery failed", { email: body.email })
       return Response.json({ error: dict["enterprise.form.error.internalServer"] }, { status: 500 })
     }
 
