@@ -157,7 +157,7 @@ try {
 
     const servermod = await import("../../opencode/src/server/server")
     inst = await import("../../opencode/src/project/instance")
-    server = servermod.Server.listen({ port: serverPort, hostname: "127.0.0.1" })
+    server = await servermod.Server.listen({ port: serverPort, hostname: "127.0.0.1" })
     console.log(`opencode server listening on http://127.0.0.1:${serverPort}`)
 
     await waitForHealth(`http://127.0.0.1:${serverPort}/global/health`)
