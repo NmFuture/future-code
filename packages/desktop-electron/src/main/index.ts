@@ -22,11 +22,11 @@ app.setName(app.isPackaged ? APP_NAMES[CHANNEL] : "OpenCode Dev")
 app.setPath("userData", join(app.getPath("appData"), app.isPackaged ? APP_IDS[CHANNEL] : "ai.opencode.desktop.dev"))
 const { autoUpdater } = pkg
 
-import { Log, type Server } from "virtual:opencode-server"
-import type { InitStep, ServerReadyData, WslConfig } from "../preload/types"
+import { Database, JsonMigration, Log, type Server } from "virtual:opencode-server"
+import type { InitStep, ServerReadyData, SqliteMigrationProgress, WslConfig } from "../preload/types"
 import { checkAppExists, resolveAppPath, wslPath } from "./apps"
 import { CHANNEL, UPDATER_ENABLED } from "./constants"
-import { registerIpcHandlers, sendDeepLinks, sendMenuCommand } from "./ipc"
+import { registerIpcHandlers, sendDeepLinks, sendMenuCommand, sendSqliteMigrationProgress } from "./ipc"
 import { initLogging } from "./logging"
 import { parseMarkdown } from "./markdown"
 import { createMenu } from "./menu"
@@ -58,7 +58,6 @@ const initEmitter = new EventEmitter()
 let initStep: InitStep = { phase: "server_waiting" }
 
 let mainWindow: BrowserWindow | null = null
-const loadingWindow: BrowserWindow | null = null
 let server: Server.Listener | null = null
 const loadingComplete = defer<void>()
 
@@ -103,7 +102,6 @@ function setupApp() {
   })
 
   void app.whenReady().then(async () => {
-    // migrate()
     app.setAsDefaultProtocolClient("opencode")
     setDockIcon()
     setupAutoUpdater()
@@ -165,6 +163,16 @@ async function initialize() {
   const needsMigration = !sqliteFileExists()
   const sqliteDone = needsMigration ? defer<void>() : undefined
 
+  if (needsMigration) {
+    initEmitter.on("sqlite", (progress: SqliteMigrationProgress) => {
+      setInitStep({ phase: "sqlite_waiting" })
+      if (loadingWindow) sendSqliteMigrationProgress(loadingWindow, progress)
+      if (mainWindow) sendSqliteMigrationProgress(mainWindow, progress)
+      if (progress.type === "Done") sqliteDone?.resolve()
+    })
+    void migrate(initEmitter)
+  }
+
   const loadingTask = (async () => {
     logger.log("setting up server connection")
     const serverConnection = await setupServerConnection()
@@ -177,12 +185,6 @@ async function initialize() {
       if (serverConnection.variant === "cli") {
         return async () => {
           const { health } = serverConnection
-          // events.on("sqlite", (progress: SqliteMigrationProgress) => {
-          //   setInitStep({ phase: "sqlite_waiting" })
-          //   if (loadingWindow) sendSqliteMigrationProgress(loadingWindow, progress)
-          //   if (mainWindow) sendSqliteMigrationProgress(mainWindow, progress)
-          //   if (progress.type === "Done") sqliteDone?.resolve()
-          // })
           await health.wait
           serverReady.resolve({
             url: serverConnection.url,
@@ -212,11 +214,8 @@ async function initialize() {
   }
 
   const loadingWindow = await (async () => {
-    if (needsMigration /** TOOD: 1 second timeout */) {
-      // showLoading = await Promise.race([init.then(() => false).catch(() => false), delay(1000).then(() => true)])
-      const loadingWindow = createLoadingWindow(globals)
-      await delay(1000)
-      return loadingWindow
+    if (needsMigration) {
+      return createLoadingWindow(globals)
     } else {
       logger.log("showing main window without loading window")
       mainWindow = createMainWindow(globals)
@@ -339,6 +338,18 @@ function sqliteFileExists() {
   const xdg = process.env.XDG_DATA_HOME
   const base = xdg && xdg.length > 0 ? xdg : join(homedir(), ".local", "share")
   return existsSync(join(base, "opencode", "opencode.db"))
+}
+
+async function migrate(events: EventEmitter) {
+  await JsonMigration.run(Database.Client(), {
+    progress: (event: JsonMigration.Progress) => {
+      const percent = Math.floor((event.current / event.total) * 100)
+      events.emit("sqlite", { type: "InProgress", value: percent })
+      if (event.current === event.total) {
+        events.emit("sqlite", { type: "Done" })
+      }
+    },
+  })
 }
 
 function setupAutoUpdater() {

@@ -1,14 +1,14 @@
-import { Database } from "bun:sqlite"
-import { drizzle } from "drizzle-orm/bun-sqlite"
-import { Global } from "../global"
-import { Log } from "../util/log"
-import { ProjectTable } from "../project/project.sql"
-import { SessionTable, MessageTable, PartTable, TodoTable, PermissionTable } from "../session/session.sql"
-import { SessionShareTable } from "../share/share.sql"
-import path from "path"
+import type { SQLiteBunDatabase } from "drizzle-orm/bun-sqlite"
+import type { NodeSQLiteDatabase } from "drizzle-orm/node-sqlite"
 import { existsSync } from "fs"
+import path from "path"
+import { Global } from "../global"
+import { ProjectTable } from "../project/project.sql"
+import { MessageTable, PartTable, PermissionTable, SessionTable, TodoTable } from "../session/session.sql"
+import { SessionShareTable } from "../share/share.sql"
 import { Filesystem } from "../util/filesystem"
 import { Glob } from "../util/glob"
+import { Log } from "../util/log"
 
 export namespace JsonMigration {
   const log = Log.create({ service: "json-migration" })
@@ -23,7 +23,7 @@ export namespace JsonMigration {
     progress?: (event: Progress) => void
   }
 
-  export async function run(sqlite: Database, options?: Options) {
+  export async function run(db: SQLiteBunDatabase<any, any> | NodeSQLiteDatabase<any, any>, options?: Options) {
     const storageDir = path.join(Global.Path.data, "storage")
 
     if (!existsSync(storageDir)) {
@@ -43,13 +43,13 @@ export namespace JsonMigration {
     log.info("starting json to sqlite migration", { storageDir })
     const start = performance.now()
 
-    const db = drizzle({ client: sqlite })
+    // const db = drizzle({ client: sqlite })
 
     // Optimize SQLite for bulk inserts
-    sqlite.exec("PRAGMA journal_mode = WAL")
-    sqlite.exec("PRAGMA synchronous = OFF")
-    sqlite.exec("PRAGMA cache_size = 10000")
-    sqlite.exec("PRAGMA temp_store = MEMORY")
+    db.run("PRAGMA journal_mode = WAL")
+    db.run("PRAGMA synchronous = OFF")
+    db.run("PRAGMA cache_size = 10000")
+    db.run("PRAGMA temp_store = MEMORY")
     const stats = {
       projects: 0,
       sessions: 0,
@@ -146,7 +146,7 @@ export namespace JsonMigration {
 
     progress?.({ current, total, label: "starting" })
 
-    sqlite.exec("BEGIN TRANSACTION")
+    db.run("BEGIN TRANSACTION")
 
     // Migrate projects first (no FK deps)
     // Derive all IDs from file paths, not JSON content
@@ -178,7 +178,10 @@ export namespace JsonMigration {
       stats.projects += insert(projectValues, ProjectTable, "project")
       step("projects", end - i)
     }
-    log.info("migrated projects", { count: stats.projects, duration: Math.round(performance.now() - start) })
+    log.info("migrated projects", {
+      count: stats.projects,
+      duration: Math.round(performance.now() - start),
+    })
 
     // Migrate sessions (depends on projects)
     // Derive all IDs from directory/file paths, not JSON content, since earlier
@@ -390,7 +393,12 @@ export namespace JsonMigration {
           errs.push(`session_share missing id/secret/url: ${shareFiles[i + j]}`)
           continue
         }
-        shareValues.push({ session_id: sessionID, id: data.id, secret: data.secret, url: data.url })
+        shareValues.push({
+          session_id: sessionID,
+          id: data.id,
+          secret: data.secret,
+          url: data.url,
+        })
       }
       stats.shares += insert(shareValues, SessionShareTable, "session_share")
       step("shares", end - i)
@@ -400,7 +408,7 @@ export namespace JsonMigration {
       log.warn("skipped orphaned session shares", { count: orphans.shares })
     }
 
-    sqlite.exec("COMMIT")
+    db.run("COMMIT")
 
     log.info("json migration complete", {
       projects: stats.projects,

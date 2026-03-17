@@ -1,39 +1,40 @@
+import { NamedError } from "@opencode-ai/util/error"
+import { drizzle } from "drizzle-orm/bun-sqlite"
+import { EOL } from "os"
+import path from "path"
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
-import { RunCommand } from "./cli/cmd/run"
-import { GenerateCommand } from "./cli/cmd/generate"
-import { Log } from "./util/log"
-import { LoginCommand, LogoutCommand, SwitchCommand, OrgsCommand } from "./cli/cmd/account"
-import { ProvidersCommand } from "./cli/cmd/providers"
+import { LoginCommand, LogoutCommand, OrgsCommand, SwitchCommand } from "./cli/cmd/account"
+import { AcpCommand } from "./cli/cmd/acp"
 import { AgentCommand } from "./cli/cmd/agent"
-import { UpgradeCommand } from "./cli/cmd/upgrade"
-import { UninstallCommand } from "./cli/cmd/uninstall"
-import { ModelsCommand } from "./cli/cmd/models"
-import { UI } from "./cli/ui"
-import { Installation } from "./installation"
-import { NamedError } from "@opencode-ai/util/error"
-import { FormatError } from "./cli/error"
-import { ServeCommand } from "./cli/cmd/serve"
-import { WorkspaceServeCommand } from "./cli/cmd/workspace-serve"
-import { Filesystem } from "./util/filesystem"
+import { DbCommand } from "./cli/cmd/db"
 import { DebugCommand } from "./cli/cmd/debug"
-import { StatsCommand } from "./cli/cmd/stats"
-import { McpCommand } from "./cli/cmd/mcp"
-import { GithubCommand } from "./cli/cmd/github"
 import { ExportCommand } from "./cli/cmd/export"
+import { GenerateCommand } from "./cli/cmd/generate"
+import { GithubCommand } from "./cli/cmd/github"
 import { ImportCommand } from "./cli/cmd/import"
+import { McpCommand } from "./cli/cmd/mcp"
+import { ModelsCommand } from "./cli/cmd/models"
+import { PrCommand } from "./cli/cmd/pr"
+import { ProvidersCommand } from "./cli/cmd/providers"
+import { RunCommand } from "./cli/cmd/run"
+import { ServeCommand } from "./cli/cmd/serve"
+import { SessionCommand } from "./cli/cmd/session"
+import { StatsCommand } from "./cli/cmd/stats"
 import { AttachCommand } from "./cli/cmd/tui/attach"
 import { TuiThreadCommand } from "./cli/cmd/tui/thread"
-import { AcpCommand } from "./cli/cmd/acp"
-import { EOL } from "os"
+import { UninstallCommand } from "./cli/cmd/uninstall"
+import { UpgradeCommand } from "./cli/cmd/upgrade"
 import { WebCommand } from "./cli/cmd/web"
-import { PrCommand } from "./cli/cmd/pr"
-import { SessionCommand } from "./cli/cmd/session"
-import { DbCommand } from "./cli/cmd/db"
-import path from "path"
+import { WorkspaceServeCommand } from "./cli/cmd/workspace-serve"
+import { FormatError } from "./cli/error"
+import { UI } from "./cli/ui"
 import { Global } from "./global"
-import { JsonMigration } from "./storage/json-migration"
+import { Installation } from "./installation"
 import { Database } from "./storage/db"
+import { JsonMigration } from "./storage/json-migration"
+import { Filesystem } from "./util/filesystem"
+import { Log } from "./util/log"
 
 process.on("unhandledRejection", (e) => {
   Log.Default.error("rejection", {
@@ -100,7 +101,7 @@ let cli = yargs(hideBin(process.argv))
       let last = -1
       if (tty) process.stderr.write("\x1b[?25l")
       try {
-        await JsonMigration.run(Database.Client().$client, {
+        await JsonMigration.run(drizzle({ client: Database.Client().$client }), {
           progress: (event) => {
             const percent = Math.floor((event.current / event.total) * 100)
             if (percent === last && event.current !== event.total) return
@@ -176,7 +177,7 @@ cli = cli
 try {
   await cli.parse()
 } catch (e) {
-  let data: Record<string, any> = {}
+  const data: Record<string, any> = {}
   if (e instanceof NamedError) {
     const obj = e.toObject()
     Object.assign(data, {
