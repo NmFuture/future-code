@@ -73,7 +73,7 @@ export async function createLead(input: SalesforceLeadInput): Promise<boolean> {
       Phone: input.phone ?? null,
       Title: input.role,
       Description: input.message,
-      LeadSource: process.env.SALESFORCE_LEAD_SOURCE ?? "Website",
+      LeadSource: "Website",
     }),
   }).catch((err) => {
     console.error("Failed to create Salesforce lead:", err)
