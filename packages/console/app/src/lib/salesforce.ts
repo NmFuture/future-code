@@ -1,17 +1,9 @@
-const baseUrl = () => {
-  const url = process.env.SALESFORCE_INSTANCE_URL
-  if (!url) return null
-  return url.replace(/\/$/, "")
-}
+import { Resource } from "@opencode-ai/console-resource"
 
 async function login() {
-  const url = baseUrl()
-  const clientId = process.env.SALESFORCE_CLIENT_ID
-  const clientSecret = process.env.SALESFORCE_CLIENT_SECRET
-  if (!url || !clientId || !clientSecret) {
-    console.error("Salesforce credentials are incomplete")
-    return null
-  }
+  const url = Resource.SALESFORCE_INSTANCE_URL.value.replace(/\/$/, "")
+  const clientId = Resource.SALESFORCE_CLIENT_ID.value
+  const clientSecret = Resource.SALESFORCE_CLIENT_SECRET.value
 
   const params = new URLSearchParams({
     grant_type: "client_credentials",
@@ -25,20 +17,19 @@ async function login() {
     body: params.toString(),
   }).catch((err) => {
     console.error("Failed to fetch Salesforce access token:", err)
-    return null
   })
 
-  if (!res) return null
+  if (!res) return
 
   if (!res.ok) {
     console.error("Failed to fetch Salesforce access token:", res.status, await res.text())
-    return null
+    return
   }
 
   const data = (await res.json()) as { access_token?: string; instance_url?: string }
   if (!data.access_token) {
     console.error("Salesforce auth response did not include an access token")
-    return null
+    return
   }
 
   return {
@@ -77,7 +68,6 @@ export async function createLead(input: SalesforceLeadInput): Promise<boolean> {
     }),
   }).catch((err) => {
     console.error("Failed to create Salesforce lead:", err)
-    return null
   })
 
   if (!res) return false
