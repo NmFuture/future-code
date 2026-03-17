@@ -1,7 +1,6 @@
-import { dialog } from "electron"
 import { bootstrap, Config, Server } from "virtual:opencode-server"
+import { dialog } from "electron"
 
-import { type CommandChild } from "./cli"
 import { DEFAULT_SERVER_URL_KEY, WSL_ENABLED_KEY } from "./constants"
 import { store } from "./store"
 
@@ -123,5 +122,3 @@ export function getServerUrlFromConfig(config: Config.Info) {
   const host = server.hostname ? normalizeHostnameForUrl(server.hostname) : "127.0.0.1"
   return `http://${host}:${server.port}`
 }
-
-export type { CommandChild }
