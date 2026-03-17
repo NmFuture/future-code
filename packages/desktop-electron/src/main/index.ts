@@ -22,7 +22,7 @@ app.setName(app.isPackaged ? APP_NAMES[CHANNEL] : "OpenCode Dev")
 app.setPath("userData", join(app.getPath("appData"), app.isPackaged ? APP_IDS[CHANNEL] : "ai.opencode.desktop.dev"))
 const { autoUpdater } = pkg
 
-import type { Server } from "virtual:opencode-server"
+import { Log, type Server } from "virtual:opencode-server"
 import type { InitStep, ServerReadyData, WslConfig } from "../preload/types"
 import { checkAppExists, resolveAppPath, wslPath } from "./apps"
 import { CHANNEL, UPDATER_ENABLED } from "./constants"
@@ -160,6 +160,8 @@ async function setupServerConnection(): Promise<ServerConnection> {
 }
 
 async function initialize() {
+  await Log.init({ print: true, level: "WARN" })
+
   const needsMigration = !sqliteFileExists()
   const sqliteDone = needsMigration ? defer<void>() : undefined
 
