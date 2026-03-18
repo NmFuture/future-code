@@ -2,7 +2,7 @@ import z from "zod"
 
 import { runPromiseInstance } from "@/effect/runtime"
 import { fn } from "@/util/fn"
-import * as S from "./auth-service"
+import { ProviderAuthEffect as S } from "./auth-effect"
 import { ProviderID } from "./schema"
 
 export namespace ProviderAuth {
@@ -10,7 +10,7 @@ export namespace ProviderAuth {
   export type Method = S.Method
 
   export async function methods() {
-    return runPromiseInstance(S.ProviderAuthService.use((service) => service.methods()))
+    return runPromiseInstance(S.Service.use((service) => service.methods()))
   }
 
   export const Authorization = S.Authorization
@@ -22,7 +22,7 @@ export namespace ProviderAuth {
       method: z.number(),
     }),
     async (input): Promise<Authorization | undefined> =>
-      runPromiseInstance(S.ProviderAuthService.use((service) => service.authorize(input))),
+      runPromiseInstance(S.Service.use((service) => service.authorize(input))),
   )
 
   export const callback = fn(
@@ -31,7 +31,7 @@ export namespace ProviderAuth {
       method: z.number(),
       code: z.string().optional(),
     }),
-    async (input) => runPromiseInstance(S.ProviderAuthService.use((service) => service.callback(input))),
+    async (input) => runPromiseInstance(S.Service.use((service) => service.callback(input))),
   )
 
   export import OauthMissing = S.OauthMissing

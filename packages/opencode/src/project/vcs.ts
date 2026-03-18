@@ -1,16 +1,16 @@
-import { BusEvent } from "@/bus/bus-event"
+import { Effect, Layer, ServiceMap } from "effect"
 import { Bus } from "@/bus"
-import z from "zod"
-import { Log } from "@/util/log"
-import { Instance } from "./instance"
+import { BusEvent } from "@/bus/bus-event"
 import { InstanceContext } from "@/effect/instance-context"
 import { FileWatcher } from "@/file/watcher"
+import { Log } from "@/util/log"
 import { git } from "@/util/git"
-import { Effect, Layer, ServiceMap } from "effect"
-
-const log = Log.create({ service: "vcs" })
+import { Instance } from "./instance"
+import z from "zod"
 
 export namespace Vcs {
+  const log = Log.create({ service: "vcs" })
+
   export const Event = {
     BranchUpdated: BusEvent.define(
       "vcs.branch.updated",
@@ -28,18 +28,15 @@ export namespace Vcs {
       ref: "VcsInfo",
     })
   export type Info = z.infer<typeof Info>
-}
 
-export namespace VcsService {
-  export interface Service {
-    readonly init: () => Effect.Effect<void>
+  export interface Interface {
     readonly branch: () => Effect.Effect<string | undefined>
   }
-}
 
-export class VcsService extends ServiceMap.Service<VcsService, VcsService.Service>()("@opencode/Vcs") {
-  static readonly layer = Layer.effect(
-    VcsService,
+  export class Service extends ServiceMap.Service<Service, Interface>()("@opencode/Vcs") {}
+
+  export const layer = Layer.effect(
+    Service,
     Effect.gen(function* () {
       const instance = yield* InstanceContext
       let current: string | undefined
@@ -65,7 +62,7 @@ export class VcsService extends ServiceMap.Service<VcsService, VcsService.Servic
             if (next !== current) {
               log.info("branch changed", { from: current, to: next })
               current = next
-              Bus.publish(Vcs.Event.BranchUpdated, { branch: next })
+              Bus.publish(Event.BranchUpdated, { branch: next })
             }
           }),
         )
@@ -73,9 +70,8 @@ export class VcsService extends ServiceMap.Service<VcsService, VcsService.Servic
         yield* Effect.addFinalizer(() => Effect.sync(unsubscribe))
       }
 
-      return VcsService.of({
-        init: Effect.fn("VcsService.init")(function* () {}),
-        branch: Effect.fn("VcsService.branch")(function* () {
+      return Service.of({
+        branch: Effect.fn("Vcs.branch")(function* () {
           return current
         }),
       })

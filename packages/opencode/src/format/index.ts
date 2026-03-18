@@ -1,21 +1,20 @@
-import { Bus } from "../bus"
-import { File } from "../file"
-import { Log } from "../util/log"
-import path from "path"
-import z from "zod"
-
-import * as Formatter from "./formatter"
-import { Config } from "../config/config"
-import { mergeDeep } from "remeda"
-import { Instance } from "../project/instance"
-import { Process } from "../util/process"
-import { InstanceContext } from "@/effect/instance-context"
 import { Effect, Layer, ServiceMap } from "effect"
 import { runPromiseInstance } from "@/effect/runtime"
-
-const log = Log.create({ service: "format" })
+import { InstanceContext } from "@/effect/instance-context"
+import path from "path"
+import { mergeDeep } from "remeda"
+import z from "zod"
+import { Bus } from "../bus"
+import { Config } from "../config/config"
+import { File } from "../file"
+import { Instance } from "../project/instance"
+import { Process } from "../util/process"
+import { Log } from "../util/log"
+import * as Formatter from "./formatter"
 
 export namespace Format {
+  const log = Log.create({ service: "format" })
+
   export const Status = z
     .object({
       name: z.string(),
@@ -27,25 +26,14 @@ export namespace Format {
     })
   export type Status = z.infer<typeof Status>
 
-  export async function init() {
-    return runPromiseInstance(FormatService.use((s) => s.init()))
+  export interface Interface {
+    readonly status: () => Effect.Effect<Status[]>
   }
 
-  export async function status() {
-    return runPromiseInstance(FormatService.use((s) => s.status()))
-  }
-}
+  export class Service extends ServiceMap.Service<Service, Interface>()("@opencode/Format") {}
 
-export namespace FormatService {
-  export interface Service {
-    readonly init: () => Effect.Effect<void>
-    readonly status: () => Effect.Effect<Format.Status[]>
-  }
-}
-
-export class FormatService extends ServiceMap.Service<FormatService, FormatService.Service>()("@opencode/Format") {
-  static readonly layer = Layer.effect(
-    FormatService,
+  export const layer = Layer.effect(
+    Service,
     Effect.gen(function* () {
       const instance = yield* InstanceContext
 
@@ -122,11 +110,12 @@ export class FormatService extends ServiceMap.Service<FormatService, FormatServi
                 },
               )
               const exit = await proc.exited
-              if (exit !== 0)
+              if (exit !== 0) {
                 log.error("failed", {
                   command: item.command,
                   ...item.environment,
                 })
+              }
             } catch (error) {
               log.error("failed to format file", {
                 error,
@@ -142,10 +131,8 @@ export class FormatService extends ServiceMap.Service<FormatService, FormatServi
       yield* Effect.addFinalizer(() => Effect.sync(unsubscribe))
       log.info("init")
 
-      const init = Effect.fn("FormatService.init")(function* () {})
-
-      const status = Effect.fn("FormatService.status")(function* () {
-        const result: Format.Status[] = []
+      const status = Effect.fn("Format.status")(function* () {
+        const result: Status[] = []
         for (const formatter of Object.values(formatters)) {
           const isOn = yield* Effect.promise(() => isEnabled(formatter))
           result.push({
@@ -157,7 +144,11 @@ export class FormatService extends ServiceMap.Service<FormatService, FormatServi
         return result
       })
 
-      return FormatService.of({ init, status })
+      return Service.of({ status })
     }),
   )
+
+  export async function status() {
+    return runPromiseInstance(Service.use((s) => s.status()))
+  }
 }

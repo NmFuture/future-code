@@ -1,15 +1,15 @@
 import { Effect, Layer, LayerMap, ServiceMap } from "effect"
-import { FileService } from "@/file"
-import { FileTimeService } from "@/file/time"
-import { FileWatcherService } from "@/file/watcher"
-import { FormatService } from "@/format"
+import { File } from "@/file"
+import { FileTime } from "@/file/time"
+import { FileWatcher } from "@/file/watcher"
+import { Format } from "@/format"
 import { PermissionEffect } from "@/permission/effect"
 import { Instance } from "@/project/instance"
-import { VcsService } from "@/project/vcs"
-import { ProviderAuthService } from "@/provider/auth-service"
+import { Vcs } from "@/project/vcs"
+import { ProviderAuthEffect } from "@/provider/auth-effect"
 import { QuestionEffect } from "@/question/effect"
-import { SkillService } from "@/skill/skill"
-import { SnapshotService } from "@/snapshot"
+import { Skill } from "@/skill/skill"
+import { Snapshot } from "@/snapshot"
 import { InstanceContext } from "./instance-context"
 import { registerDisposer } from "./instance-registry"
 
@@ -18,14 +18,14 @@ export { InstanceContext } from "./instance-context"
 export type InstanceServices =
   | QuestionEffect.Service
   | PermissionEffect.Service
-  | ProviderAuthService
-  | FileWatcherService
-  | VcsService
-  | FileTimeService
-  | FormatService
-  | FileService
-  | SkillService
-  | SnapshotService
+  | ProviderAuthEffect.Service
+  | FileWatcher.Service
+  | Vcs.Service
+  | FileTime.Service
+  | Format.Service
+  | File.Service
+  | Skill.Service
+  | Snapshot.Service
 
 // NOTE: LayerMap only passes the key (directory string) to lookup, but we need
 // the full instance context (directory, worktree, project). We read from the
@@ -38,14 +38,14 @@ function lookup(_key: string) {
   return Layer.mergeAll(
     Layer.fresh(QuestionEffect.layer),
     Layer.fresh(PermissionEffect.layer),
-    Layer.fresh(ProviderAuthService.layer),
-    Layer.fresh(FileWatcherService.layer).pipe(Layer.orDie),
-    Layer.fresh(VcsService.layer),
-    Layer.fresh(FileTimeService.layer).pipe(Layer.orDie),
-    Layer.fresh(FormatService.layer),
-    Layer.fresh(FileService.layer),
-    Layer.fresh(SkillService.layer),
-    Layer.fresh(SnapshotService.layer),
+    Layer.fresh(ProviderAuthEffect.defaultLayer),
+    Layer.fresh(FileWatcher.layer).pipe(Layer.orDie),
+    Layer.fresh(Vcs.layer),
+    Layer.fresh(FileTime.layer).pipe(Layer.orDie),
+    Layer.fresh(Format.layer),
+    Layer.fresh(File.layer),
+    Layer.fresh(Skill.defaultLayer),
+    Layer.fresh(Snapshot.defaultLayer),
   ).pipe(Layer.provide(ctx))
 }
 
