@@ -2,7 +2,7 @@ import { NodeFileSystem, NodePath } from "@effect/platform-node"
 import { Cause, Duration, Effect, FileSystem, Layer, Schedule, ServiceMap } from "effect"
 import path from "path"
 import type { Agent } from "../agent/agent"
-import { PermissionService } from "../permission/service"
+import { PermissionEffect } from "../permission/service"
 import { Identifier } from "../id/id"
 import { Log } from "../util/log"
 import { ToolID } from "./schema"
@@ -27,11 +27,15 @@ export namespace TruncateEffect {
 
   function hasTaskTool(agent?: Agent.Info) {
     if (!agent?.permission) return false
-    return PermissionService.evaluate("task", "*", agent.permission).action !== "deny"
+    return PermissionEffect.evaluate("task", "*", agent.permission).action !== "deny"
   }
 
   export interface Api {
     readonly cleanup: () => Effect.Effect<void>
+    /**
+     * Returns output unchanged when it fits within the limits, otherwise writes the full text
+     * to the truncation directory and returns a preview plus a hint to inspect the saved file.
+     */
     readonly output: (text: string, options?: Options, agent?: Agent.Info) => Effect.Effect<Result>
   }
 

@@ -3,7 +3,7 @@ import { FileService } from "@/file"
 import { FileTimeService } from "@/file/time"
 import { FileWatcherService } from "@/file/watcher"
 import { FormatService } from "@/format"
-import { PermissionService } from "@/permission/service"
+import { PermissionEffect } from "@/permission/service"
 import { Instance } from "@/project/instance"
 import { VcsService } from "@/project/vcs"
 import { ProviderAuthService } from "@/provider/auth-service"
@@ -17,7 +17,7 @@ export { InstanceContext } from "./instance-context"
 
 export type InstanceServices =
   | QuestionService
-  | PermissionService.Service
+  | PermissionEffect.Service
   | ProviderAuthService
   | FileWatcherService
   | VcsService
@@ -37,7 +37,7 @@ function lookup(_key: string) {
   const ctx = Layer.sync(InstanceContext, () => InstanceContext.of(Instance.current))
   return Layer.mergeAll(
     Layer.fresh(QuestionService.layer),
-    Layer.fresh(PermissionService.layer),
+    Layer.fresh(PermissionEffect.layer),
     Layer.fresh(ProviderAuthService.layer),
     Layer.fresh(FileWatcherService.layer).pipe(Layer.orDie),
     Layer.fresh(VcsService.layer),

@@ -3,7 +3,7 @@ import { Config } from "@/config/config"
 import { fn } from "@/util/fn"
 import { Wildcard } from "@/util/wildcard"
 import os from "os"
-import { PermissionService as S } from "./service"
+import { PermissionEffect as S } from "./service"
 
 export namespace PermissionNext {
   function expand(pattern: string): string {
@@ -53,9 +53,7 @@ export namespace PermissionNext {
     return rulesets.flat()
   }
 
-  export const ask = fn(S.AskInput, async (input) =>
-    runPromiseInstance(S.Service.use((service) => service.ask(input))),
-  )
+  export const ask = fn(S.AskInput, async (input) => runPromiseInstance(S.Service.use((service) => service.ask(input))))
 
   export const reply = fn(S.ReplyInput, async (input) =>
     runPromiseInstance(S.Service.use((service) => service.reply(input))),

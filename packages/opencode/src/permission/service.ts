@@ -11,7 +11,7 @@ import { Deferred, Effect, Layer, Schema, ServiceMap } from "effect"
 import z from "zod"
 import { PermissionID } from "./schema"
 
-export namespace PermissionService {
+export namespace PermissionEffect {
   const log = Log.create({ service: "permission" })
 
   export const Action = z.enum(["allow", "deny", "ask"]).meta({
