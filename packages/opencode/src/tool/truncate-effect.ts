@@ -1,62 +1,64 @@
-import path from "path"
-import { Log } from "../util/log"
-import { TRUNCATION_DIR } from "./truncation-dir"
-import { Identifier } from "../id/id"
-import type { Agent } from "../agent/agent"
-import { PermissionService } from "../permission/service"
 import { NodeFileSystem, NodePath } from "@effect/platform-node"
 import { Cause, Duration, Effect, FileSystem, Layer, Schedule, ServiceMap } from "effect"
+import path from "path"
+import type { Agent } from "../agent/agent"
+import { PermissionService } from "../permission/service"
+import { Identifier } from "../id/id"
+import { Log } from "../util/log"
 import { ToolID } from "./schema"
+import { TRUNCATION_DIR } from "./truncation-dir"
 
-const log = Log.create({ service: "truncation" })
-const RETENTION = Duration.days(7)
+export namespace TruncateEffect {
+  const log = Log.create({ service: "truncation" })
+  const RETENTION = Duration.days(7)
 
-export const MAX_LINES = 2000
-export const MAX_BYTES = 50 * 1024
+  export const MAX_LINES = 2000
+  export const MAX_BYTES = 50 * 1024
+  export const DIR = TRUNCATION_DIR
+  export const GLOB = path.join(TRUNCATION_DIR, "*")
 
-export type Result = { content: string; truncated: false } | { content: string; truncated: true; outputPath: string }
+  export type Result = { content: string; truncated: false } | { content: string; truncated: true; outputPath: string }
 
-export interface Options {
-  maxLines?: number
-  maxBytes?: number
-  direction?: "head" | "tail"
-}
+  export interface Options {
+    maxLines?: number
+    maxBytes?: number
+    direction?: "head" | "tail"
+  }
 
-function hasTaskTool(agent?: Agent.Info) {
-  if (!agent?.permission) return false
-  return PermissionService.evaluate("task", "*", agent.permission).action !== "deny"
-}
+  function hasTaskTool(agent?: Agent.Info) {
+    if (!agent?.permission) return false
+    return PermissionService.evaluate("task", "*", agent.permission).action !== "deny"
+  }
 
-export namespace TruncateService {
-  export interface Service {
+  export interface Api {
     readonly cleanup: () => Effect.Effect<void>
     readonly output: (text: string, options?: Options, agent?: Agent.Info) => Effect.Effect<Result>
   }
-}
 
-export class TruncateService extends ServiceMap.Service<TruncateService, TruncateService.Service>()(
-  "@opencode/Truncate",
-) {
-  static readonly layer = Layer.effect(
-    TruncateService,
+  export class Service extends ServiceMap.Service<Service, Api>()("@opencode/Truncate") {}
+
+  export const layer = Layer.effect(
+    Service,
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
 
-      const cleanup = Effect.fn("TruncateService.cleanup")(function* () {
+      const cleanup = Effect.fn("TruncateEffect.cleanup")(function* () {
         const cutoff = Identifier.timestamp(Identifier.create("tool", false, Date.now() - Duration.toMillis(RETENTION)))
-        const entries = yield* fs
-          .readDirectory(TRUNCATION_DIR)
-          .pipe(
-            Effect.map((all) => all.filter((name) => name.startsWith("tool_"))),
-            Effect.catch(() => Effect.succeed([])),
-          )
+        const entries = yield* fs.readDirectory(TRUNCATION_DIR).pipe(
+          Effect.map((all) => all.filter((name) => name.startsWith("tool_"))),
+          Effect.catch(() => Effect.succeed([])),
+        )
         for (const entry of entries) {
           if (Identifier.timestamp(entry) >= cutoff) continue
           yield* fs.remove(path.join(TRUNCATION_DIR, entry)).pipe(Effect.catch(() => Effect.void))
         }
       })
 
-      const output = Effect.fn("TruncateService.output")(function* (text: string, options: Options = {}, agent?: Agent.Info) {
+      const output = Effect.fn("TruncateEffect.output")(function* (
+        text: string,
+        options: Options = {},
+        agent?: Agent.Info,
+      ) {
         const maxLines = options.maxLines ?? MAX_LINES
         const maxBytes = options.maxBytes ?? MAX_BYTES
         const direction = options.direction ?? "head"
@@ -116,7 +118,6 @@ export class TruncateService extends ServiceMap.Service<TruncateService, Truncat
         } as const
       })
 
-      // Start delayed hourly cleanup — scoped to runtime lifetime
       yield* cleanup().pipe(
         Effect.catchCause((cause) => {
           log.error("truncation cleanup failed", { cause: Cause.pretty(cause) })
@@ -127,7 +128,9 @@ export class TruncateService extends ServiceMap.Service<TruncateService, Truncat
         Effect.forkScoped,
       )
 
-      return TruncateService.of({ cleanup, output })
+      return Service.of({ cleanup, output })
     }),
-  ).pipe(Layer.provide(NodeFileSystem.layer), Layer.provide(NodePath.layer))
+  )
+
+  export const defaultLayer = layer.pipe(Layer.provide(NodeFileSystem.layer), Layer.provide(NodePath.layer))
 }

@@ -1,8 +1,8 @@
 import { describe, test, expect } from "bun:test"
 import { NodeFileSystem } from "@effect/platform-node"
 import { Effect, FileSystem, Layer } from "effect"
-import { Truncate } from "../../src/tool/truncation"
-import { TruncateService } from "../../src/tool/truncate-service"
+import { Truncate } from "../../src/tool/truncate"
+import { TruncateEffect } from "../../src/tool/truncate-effect"
 import { Identifier } from "../../src/id/id"
 import { Filesystem } from "../../src/util/filesystem"
 import path from "path"
@@ -129,7 +129,7 @@ describe("Truncate", () => {
 
   describe("cleanup", () => {
     const DAY_MS = 24 * 60 * 60 * 1000
-    const it = testEffect(Layer.mergeAll(TruncateService.layer, NodeFileSystem.layer))
+    const it = testEffect(Layer.mergeAll(TruncateEffect.defaultLayer, NodeFileSystem.layer))
 
     it.effect("deletes files older than 7 days and preserves recent files", () =>
       Effect.gen(function* () {
@@ -142,7 +142,7 @@ describe("Truncate", () => {
 
         yield* writeFileStringScoped(old, "old content")
         yield* writeFileStringScoped(recent, "recent content")
-        yield* TruncateService.use((s) => s.cleanup())
+        yield* TruncateEffect.Service.use((s) => s.cleanup())
 
         expect(yield* fs.exists(old)).toBe(false)
         expect(yield* fs.exists(recent)).toBe(true)
